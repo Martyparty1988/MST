@@ -2081,3 +2081,231 @@ body {
     justify-content: center;
   }
 }
+
+/* ============================================
+   PDF VIEWER STYLES
+   ============================================ */
+
+.pdf-upload-section {
+  margin-bottom: 24px;
+}
+
+.pdf-viewer-container {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.pdf-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-control-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pdf-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdf-btn:hover:not(:disabled) {
+  background: rgba(50, 184, 198, 0.2);
+  border-color: var(--mst-primary);
+  color: var(--mst-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(50, 184, 198, 0.3);
+}
+
+.pdf-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-info-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-input {
+  width: 60px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: center;
+}
+
+.page-input:focus {
+  outline: none;
+  border-color: var(--mst-primary);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.page-info {
+  font-size: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.zoom-level {
+  font-size: 14px;
+  color: var(--text-secondary);
+  min-width: 50px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.pdf-canvas-container {
+  position: relative;
+  min-height: 600px;
+  max-height: calc(100vh - 300px);
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+}
+
+#pdf-canvas {
+  display: block;
+  max-width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  background: white;
+}
+
+.pdf-empty-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: 100%;
+  max-width: 400px;
+}
+
+.pdf-empty-state .empty-state-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.pdf-empty-state .empty-state-text {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+/* Fullscreen Mode */
+.pdf-viewer-container:fullscreen {
+  background: var(--bg-primary);
+}
+
+.pdf-viewer-container:fullscreen .pdf-canvas-container {
+  max-height: calc(100vh - 100px);
+}
+
+/* Loading Spinner */
+.pdf-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+@keyframes pdf-spin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.pdf-loading::after {
+  content: '⏳';
+  display: inline-block;
+  animation: pdf-spin 1s linear infinite;
+}
+
+/* Responsive PDF Viewer */
+@media (max-width: 768px) {
+  .pdf-controls {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .pdf-control-group {
+    padding: 6px 8px;
+  }
+
+  .pdf-btn {
+    padding: 6px 10px;
+    min-width: 36px;
+    font-size: 14px;
+  }
+
+  .pdf-canvas-container {
+    min-height: 400px;
+    padding: 10px;
+  }
+
+  .page-info {
+    font-size: 12px;
+  }
+
+  .page-input {
+    width: 50px;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .pdf-controls,
+  .pdf-upload-section,
+  .bottom-nav,
+  .header {
+    display: none !important;
+  }
+
+  .pdf-viewer-container {
+    background: white;
+    border: none;
+  }
+
+  .pdf-canvas-container {
+    background: white;
+    padding: 0;
+    max-height: none;
+  }
+}

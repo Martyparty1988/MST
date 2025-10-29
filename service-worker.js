@@ -25,7 +25,8 @@ const STATIC_FILES = [
   '/utils/charts.js',
   '/utils/advanced-charts.js',
   '/utils/export.js',
-  '/utils/analytics.js'
+  '/utils/analytics.js',
+  '/utils/pdf-viewer.js'
 ];
 
 // Install event - cache static assets
