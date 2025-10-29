@@ -198,6 +198,7 @@ function navigateToPage(page) {
     plan: 'Plan',
     records: 'Records',
     stats: 'Stats',
+    analytics: 'Analytics',
     settings: 'Settings',
     admin: 'Admin Dashboard'
   };
@@ -238,6 +239,11 @@ function handleServiceWorkerMessage(event) {
 function render() {
   const mainContent = document.getElementById('mainContent');
 
+  // Destroy existing charts before rendering new page
+  if (window.Charts) {
+    window.Charts.destroyAllCharts();
+  }
+
   switch (currentPage) {
     case 'plan':
       mainContent.innerHTML = renderPlanPage();
@@ -247,6 +253,19 @@ function render() {
       break;
     case 'stats':
       mainContent.innerHTML = renderStatsPage();
+      // Initialize charts after rendering
+      if (window.Charts && appState.workEntries.length > 0) {
+        window.Charts.initializeStatsCharts(appState);
+      }
+      break;
+    case 'analytics':
+      mainContent.innerHTML = renderAnalyticsPage();
+      // Initialize advanced charts after rendering
+      setTimeout(() => {
+        if (window.AdvancedCharts && appState.workEntries.length > 0) {
+          initializeAnalyticsCharts();
+        }
+      }, 100);
       break;
     case 'settings':
       mainContent.innerHTML = renderSettingsPage();
@@ -383,6 +402,42 @@ function renderRecordCard(entry) {
 function renderStatsPage() {
   const stats = calculateStats();
 
+  if (appState.workEntries.length === 0) {
+    return `
+      <div class="section">
+        <div class="kpi-grid">
+          <div class="kpi-card primary">
+            <div class="kpi-label">Total Earnings</div>
+            <div class="kpi-value">0 CZK</div>
+          </div>
+          <div class="kpi-card accent">
+            <div class="kpi-label">Total Hours</div>
+            <div class="kpi-value">0h</div>
+          </div>
+          <div class="kpi-card secondary">
+            <div class="kpi-label">Total Tasks</div>
+            <div class="kpi-value">0</div>
+          </div>
+          <div class="kpi-card warning">
+            <div class="kpi-label">Avg Earnings/Task</div>
+            <div class="kpi-value">0 CZK</div>
+          </div>
+        </div>
+
+        <div class="empty-state" style="margin-top: 40px;">
+          <div class="empty-state-icon">📊</div>
+          <div class="empty-state-text">No data to visualize yet</div>
+          <p style="margin-top: 16px; color: var(--text-secondary);">
+            Add some work records to see beautiful charts and analytics!
+          </p>
+          <button class="btn btn-primary" onclick="navigateToPage('records')" style="margin-top: 20px;">
+            Go to Records
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   return `
     <div class="section">
       <div class="kpi-grid">
@@ -404,8 +459,22 @@ function renderStatsPage() {
         </div>
       </div>
 
+      <!-- Earnings Over Time Chart -->
       <div class="chart-container">
         <canvas id="earningsChart"></canvas>
+      </div>
+
+      <!-- Two-column layout for additional charts -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-top: 24px;">
+        <!-- Worker Comparison Chart -->
+        <div class="chart-container" style="height: 350px;">
+          <canvas id="workerComparisonChart"></canvas>
+        </div>
+
+        <!-- Project Breakdown Chart -->
+        <div class="chart-container" style="height: 350px;">
+          <canvas id="projectBreakdownChart"></canvas>
+        </div>
       </div>
     </div>
   `;
@@ -532,6 +601,259 @@ function renderProjectsList() {
       `).join('')}
     </div>
   `;
+}
+
+// =============================
+// Analytics Page
+// =============================
+function renderAnalyticsPage() {
+  if (appState.workEntries.length === 0) {
+    return `
+      <div class="section">
+        <div class="empty-state" style="margin-top: 40px;">
+          <div class="empty-state-icon">🎯</div>
+          <div class="empty-state-text">No data for analytics yet</div>
+          <p style="margin-top: 16px; color: var(--text-secondary);">
+            Add some work records to see advanced analytics, goals, and predictions!
+          </p>
+          <button class="btn btn-primary" onclick="navigateToPage('records')" style="margin-top: 20px;">
+            Go to Records
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Get goals with progress
+  const goalsWithProgress = window.Analytics.getGoalsWithProgress(appState.workEntries);
+
+  // Calculate performance metrics
+  const metrics = window.Analytics.calculatePerformanceMetrics(appState);
+
+  // Get insights
+  const insights = window.Analytics.getPerformanceInsights(metrics);
+
+  return `
+    <div class="section animated-gradient-bg">
+      <!-- Export Buttons -->
+      <div class="export-btn-group">
+        <button class="export-btn" onclick="window.ChartExport.exportAllChartsAsPNG()">
+          📥 Export All Charts
+        </button>
+        <button class="export-btn" onclick="window.ChartExport.exportPDFReport()">
+          📄 Generate PDF Report
+        </button>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- Goals Section -->
+      <div class="section-header">
+        <h2 class="section-title">🎯 Goals</h2>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 32px;">
+        ${goalsWithProgress.map(goal => renderGoalCard(goal)).join('')}
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- Performance Metrics -->
+      <div class="section-header">
+        <h2 class="section-title">📈 Performance Metrics</h2>
+      </div>
+      <div class="performance-grid">
+        <div class="metric-card velocity">
+          <div class="metric-label">Tasks Per Day</div>
+          <div class="metric-value">${metrics.velocity.tasksPerDay.toFixed(1)}</div>
+        </div>
+        <div class="metric-card velocity">
+          <div class="metric-label">Earnings Per Day</div>
+          <div class="metric-value">${metrics.velocity.earningsPerDay.toFixed(0)} CZK</div>
+        </div>
+        <div class="metric-card efficiency">
+          <div class="metric-label">Earnings Per Hour</div>
+          <div class="metric-value">${metrics.efficiency.earningsPerHour.toFixed(0)} CZK</div>
+        </div>
+        <div class="metric-card efficiency">
+          <div class="metric-label">Earnings Per Task</div>
+          <div class="metric-value">${metrics.efficiency.earningsPerTask.toFixed(0)} CZK</div>
+        </div>
+        <div class="metric-card consistency">
+          <div class="metric-label">Consistency Score</div>
+          <div class="metric-value">${metrics.consistency.earningsConsistency.toFixed(0)}%</div>
+        </div>
+        <div class="metric-card growth">
+          <div class="metric-label">Earnings Growth</div>
+          <div class="metric-value">${metrics.growth.earningsGrowth > 0 ? '+' : ''}${metrics.growth.earningsGrowth.toFixed(1)}%</div>
+        </div>
+        <div class="metric-card overall">
+          <div class="metric-label">Overall Score</div>
+          <div class="metric-value">${metrics.overallScore.toFixed(0)}/100</div>
+        </div>
+      </div>
+
+      ${insights.length > 0 ? `
+        <div class="insights-panel">
+          <div class="insights-title">💡 Insights & Recommendations</div>
+          ${insights.map(insight => `
+            <div class="insight-item ${insight.type}">
+              <div class="insight-icon">${insight.icon}</div>
+              <div class="insight-content">
+                <div class="insight-title-text">${insight.title}</div>
+                <div class="insight-message">${insight.message}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <div class="section-divider"></div>
+
+      <!-- Advanced Charts -->
+      <div class="section-header">
+        <h2 class="section-title">📊 Advanced Charts</h2>
+      </div>
+
+      <!-- Performance Radar Chart -->
+      <div class="advanced-chart-container">
+        <div class="chart-header">
+          <div class="chart-title">Worker Performance Radar</div>
+          <div class="chart-actions">
+            <button class="chart-btn" onclick="window.ChartExport.exportChartAsPNG('performanceRadarChart', 'worker-performance')">
+              📥 Export
+            </button>
+            <button class="chart-btn" onclick="window.ChartExport.shareChart('performanceRadarChart', 'Worker Performance')">
+              🔗 Share
+            </button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="performanceRadarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Correlation Scatter Chart -->
+      <div class="advanced-chart-container">
+        <div class="chart-header">
+          <div class="chart-title">Hours vs Earnings Correlation</div>
+          <div class="chart-actions">
+            <button class="chart-btn" onclick="window.ChartExport.exportChartAsPNG('correlationScatterChart', 'hours-earnings-correlation')">
+              📥 Export
+            </button>
+            <button class="chart-btn" onclick="window.ChartExport.shareChart('correlationScatterChart', 'Hours vs Earnings')">
+              🔗 Share
+            </button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="correlationScatterChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Time Stacked Bar Chart -->
+      <div class="advanced-chart-container">
+        <div class="chart-header">
+          <div class="chart-title">Monthly Earnings by Project</div>
+          <div class="chart-actions">
+            <button class="chart-btn" onclick="window.ChartExport.exportChartAsPNG('timeStackedBarChart', 'monthly-earnings')">
+              📥 Export
+            </button>
+            <button class="chart-btn" onclick="window.ChartExport.shareChart('timeStackedBarChart', 'Monthly Earnings')">
+              🔗 Share
+            </button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="timeStackedBarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Trend Prediction Chart -->
+      <div class="advanced-chart-container">
+        <div class="chart-header">
+          <div class="chart-title">Earnings Trend & Prediction</div>
+          <div class="chart-actions">
+            <button class="chart-btn" onclick="window.ChartExport.exportChartAsPNG('trendPredictionChart', 'earnings-prediction')">
+              📥 Export
+            </button>
+            <button class="chart-btn" onclick="window.ChartExport.shareChart('trendPredictionChart', 'Earnings Prediction')">
+              🔗 Share
+            </button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="trendPredictionChart"></canvas>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderGoalCard(goalWithProgress) {
+  const { id, name, icon, type, target, period, progress } = goalWithProgress;
+  const percentage = Math.min(100, progress.percentage);
+
+  return `
+    <div class="goal-card">
+      <div class="goal-card-header">
+        <div>
+          <div class="goal-icon">${icon}</div>
+          <div class="goal-title">${name}</div>
+          <div class="goal-period">${period}</div>
+        </div>
+        <div class="goal-percentage">${percentage.toFixed(0)}%</div>
+      </div>
+      <div class="goal-progress-bar">
+        <div class="goal-progress-fill" style="width: ${percentage}%"></div>
+      </div>
+      <div class="goal-stats">
+        <div>
+          <div class="goal-current">${progress.current.toFixed(type === 'hours' ? 1 : 0)}</div>
+          <div class="goal-target">of ${target} ${type === 'earnings' ? 'CZK' : type === 'hours' ? 'hours' : 'tasks'}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 14px; color: var(--text-secondary);">Remaining</div>
+          <div style="font-size: 16px; font-weight: 600; color: var(--mst-warning);">${progress.remaining.toFixed(type === 'hours' ? 1 : 0)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function initializeAnalyticsCharts() {
+  try {
+    // Performance Radar Chart
+    window.AdvancedCharts.createPerformanceRadarChart(
+      'performanceRadarChart',
+      appState.workEntries,
+      appState.workers
+    );
+
+    // Correlation Scatter Chart
+    window.AdvancedCharts.createCorrelationScatterChart(
+      'correlationScatterChart',
+      appState.workEntries,
+      appState.workers
+    );
+
+    // Time Stacked Bar Chart
+    window.AdvancedCharts.createTimeStackedBarChart(
+      'timeStackedBarChart',
+      appState.workEntries,
+      appState.projects
+    );
+
+    // Trend Prediction Chart
+    window.AdvancedCharts.createTrendPredictionChart(
+      'trendPredictionChart',
+      appState.workEntries
+    );
+
+    console.log('[Analytics] All charts initialized successfully');
+  } catch (error) {
+    console.error('[Analytics] Chart initialization failed:', error);
+    window.Toast.error('Failed to initialize analytics charts', 'Chart Error');
+  }
 }
 
 // =============================

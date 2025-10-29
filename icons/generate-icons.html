@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MST Icon Generator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #21808d;
+            margin-top: 0;
+        }
+        .preview {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }
+        .preview-item {
+            text-align: center;
+        }
+        .preview-item img {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .preview-item span {
+            display: block;
+            font-size: 14px;
+            color: #666;
+        }
+        button {
+            background: #21808d;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #1d7480;
+            transform: translateY(-2px);
+        }
+        .button-group {
+            margin: 20px 0;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            background: #e8f5e9;
+            color: #2e7d32;
+            display: none;
+        }
+        .status.show {
+            display: block;
+        }
+        canvas {
+            display: none;
+        }
+        .instructions {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #ffa502;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 MST Icon Generator</h1>
+        <p>Generate PWA icons from the SVG source in multiple sizes.</p>
+
+        <div class="instructions">
+            <strong>📝 Instructions:</strong>
+            <ol>
+                <li>Click "Generate Icons" to create PNG files from the SVG</li>
+                <li>Click individual download buttons for each size</li>
+                <li>Or use "Download All" to get a ZIP file</li>
+                <li>Place the downloaded PNGs in the <code>/icons</code> folder</li>
+            </ol>
+        </div>
+
+        <div class="button-group">
+            <button onclick="generateIcons()">🚀 Generate Icons</button>
+            <button onclick="downloadAll()" id="downloadAllBtn" style="display:none;">📦 Download All (ZIP)</button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="preview" id="preview"></div>
+
+        <!-- Hidden canvases for rendering -->
+        <canvas id="canvas192"></canvas>
+        <canvas id="canvas512"></canvas>
+        <canvas id="canvas180"></canvas>
+        <canvas id="canvas167"></canvas>
+        <canvas id="canvas152"></canvas>
+        <canvas id="canvas120"></canvas>
+    </div>
+
+    <script>
+        const sizes = [
+            { size: 512, name: 'icon-512x512.png', desc: 'High Resolution' },
+            { size: 192, name: 'icon-192x192.png', desc: 'Standard' },
+            { size: 180, name: 'icon-180x180.png', desc: 'Apple Touch' },
+            { size: 167, name: 'icon-167x167.png', desc: 'iPad Pro' },
+            { size: 152, name: 'icon-152x152.png', desc: 'iPad' },
+            { size: 120, name: 'icon-120x120.png', desc: 'iPhone' }
+        ];
+
+        let generatedBlobs = {};
+
+        async function generateIcons() {
+            const statusEl = document.getElementById('status');
+            const previewEl = document.getElementById('preview');
+            statusEl.textContent = 'Generating icons...';
+            statusEl.className = 'status show';
+            previewEl.innerHTML = '';
+            generatedBlobs = {};
+
+            try {
+                // Load SVG
+                const response = await fetch('icon.svg');
+                const svgText = await response.text();
+
+                // Generate each size
+                for (const { size, name, desc } of sizes) {
+                    const blob = await svgToPng(svgText, size);
+                    generatedBlobs[name] = blob;
+
+                    // Create preview
+                    const url = URL.createObjectURL(blob);
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'preview-item';
+                    previewItem.innerHTML = `
+                        <img src="${url}" width="${Math.min(size, 150)}" height="${Math.min(size, 150)}" alt="${name}">
+                        <span>${size}x${size} - ${desc}</span>
+                        <button onclick="downloadIcon('${name}')">📥 Download</button>
+                    `;
+                    previewEl.appendChild(previewItem);
+                }
+
+                statusEl.textContent = '✅ Icons generated successfully! Click download buttons below.';
+                document.getElementById('downloadAllBtn').style.display = 'inline-block';
+
+            } catch (error) {
+                statusEl.textContent = '❌ Error: ' + error.message;
+                statusEl.style.background = '#ffebee';
+                statusEl.style.color = '#c62828';
+                console.error(error);
+            }
+        }
+
+        async function svgToPng(svgText, size) {
+            return new Promise((resolve, reject) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+
+                const img = new Image();
+                const blob = new Blob([svgText], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0, size, size);
+                    canvas.toBlob((pngBlob) => {
+                        URL.revokeObjectURL(url);
+                        resolve(pngBlob);
+                    }, 'image/png');
+                };
+
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Failed to load SVG'));
+                };
+
+                img.src = url;
+            });
+        }
+
+        function downloadIcon(name) {
+            const blob = generatedBlobs[name];
+            if (!blob) return;
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        async function downloadAll() {
+            // Simple approach: download each individually with slight delays
+            for (const name in generatedBlobs) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+                downloadIcon(name);
+            }
+
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = '✅ All icons downloaded! Check your Downloads folder.';
+        }
+    </script>
+</body>
+</html>
