@@ -1,418 +1,607 @@
-// =============================================
-// MST - STORAGE MODULE INTEGRATION
-// =============================================
+// ============================================
+// MST - Marty Solar Tracker
+// Main Application (Optimized & Refactored)
+// ============================================
 
-// Rewrite persistence from localStorage to IndexedDB (with auto-backup tracking)
-// Override default save/load methods to work with new system
-
-// Save all state to IndexedDB
-async function saveToIndexedDB() {
-  try {
-    await window.IndexedDBService.saveAllData({
-      workers: appState.workers,
-      projects: appState.projects,
-      workEntries: appState.workEntries
-    });
-
-    // Auto-backup trigger (if available)
-    if (window.BackupService && typeof window.BackupService.trackChange === 'function') {
-      await window.BackupService.trackChange();
-    }
-    console.log('[Storage] Data saved to IndexedDB');
-  } catch (e) {
-    console.error('[Storage] IndexedDB save failed:', e);
-    // fallback to localStorage if needed
-  }
-}
-
-// Load all state from IndexedDB
-async function loadFromIndexedDB() {
-  try {
-    const data = await window.IndexedDBService.loadAllData();
-    if (data.workers?.length || data.projects?.length || data.workEntries?.length) {
-      appState.workers = data.workers || [];
-      appState.projects = data.projects || [];
-      appState.workEntries = data.workEntries || [];
-      console.log('[Storage] Data loaded from IndexedDB');
-      return true;
-    }
-    return false;
-  } catch (e) {
-    console.error('[Storage] IndexedDB load failed:', e);
-    return false;
-  }
-}
-/*
-MST - Marty Solar Tracker
-Refactor: IndexedDB persistent storage + multilayer backup strategy
-*/
 // =============================
-// Constants & Utilities
+// Constants
 // =============================
-const SCHEMA_VERSION = 1;
-const DB_NAME = 'mst';
-const STORE_RECORDS = 'records';
-const STORE_META = 'meta';
-const LS_MIGRATED = 'mst:migrated';
-const LS_ADMIN_SESSION = 'mst:adminSession';
-const LS_AUTO_INDEX = 'mst:autoBackup:index';
-const AUTO_SLOTS = 5;
-const AUTO_SLOT_KEY = (i) => `mst:autoBackup:slot:${i}`;
-const ADMIN_SECRET = 'mst2025';
-const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8h
-const AUTO_BACKUP_CHANGE_THRESHOLD = 25;
-const AUTO_BACKUP_TIME_MS = 60 * 1000;
-const FS_DEBOUNCE_MS = 30 * 1000;
-const nowIso = () => new Date().toISOString();
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-function uid(prefix='id') {
-  return `${prefix}_${Math.random().toString(36).slice(2,10)}_${Date.now()}`;
-}
-function downloadBlob(name, blob) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}
-function toCSV(rows, headers) {
-  const esc = (v) => {
-    if (v == null) return '';
-    const s = String(v).replaceAll('"', '""');
-    if (/[",\n]/.test(s)) return `"${s}"`;
-    return s;
-  };
-  return [headers.join(',')].concat(rows.map(r => headers.map(h => esc(r[h])).join(','))).join('\n');
-}
+const ADMIN_PASSWORD = 'mst2025';
+const ADMIN_SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 hours
+const SECRET_CLICK_COUNT = 5;
+const SECRET_CLICK_WINDOW = 3000; // 3 seconds
+
 // =============================
 // State
 // =============================
-let appState = { workers: [], projects: [], workEntries: [] };
-let adminSession = null; // { token, createdAt }
-let clickCount = 0;
-let clickTimestamps = [];
+let appState = {
+  workers: [],
+  projects: [],
+  workEntries: []
+};
+
+let adminSession = null;
+let secretClickCount = 0;
+let secretClickTimer = null;
 let currentPage = 'plan';
-let changeCounter = 0;
-let lastAutoBackupAt = 0;
-let fsAccessHandle = null; // File System Access API file handle (not persisted)
-let fsDebounceTimer = null;
+
 // =============================
-// IndexedDB layer
+// Initialization
 // =============================
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, SCHEMA_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_RECORDS)) {
-        db.createObjectStore(STORE_RECORDS, { keyPath: 'id' });
+async function init() {
+  try {
+    showLoading('Initializing app...');
+
+    // Initialize IndexedDB
+    await window.IndexedDBService.initDB();
+    await window.IndexedDBService.initMeta();
+
+    // Perform migration if needed
+    const migrationReport = await window.MigrationService.performMigrationIfNeeded();
+    if (migrationReport) {
+      const total = migrationReport.workers.migrated + migrationReport.projects.migrated + migrationReport.workEntries.migrated;
+      if (total > 0) {
+        window.Toast.success(`Migrated ${total} items from old storage`, 'Migration Complete');
       }
-      if (!db.objectStoreNames.contains(STORE_META)) {
-        db.createObjectStore(STORE_META, { keyPath: 'key' });
-      }
+    }
+
+    // Load state
+    await loadState();
+
+    // Check admin session
+    restoreAdminSession();
+
+    // Setup event listeners
+    setupEventListeners();
+
+    // Schedule automatic vacuum
+    window.VacuumService.scheduleVacuum();
+
+    // Render initial page
+    render();
+
+    hideLoading();
+    window.Toast.success('App loaded successfully', 'Welcome to MST');
+
+  } catch (error) {
+    console.error('[App] Initialization failed:', error);
+    hideLoading();
+    window.Toast.error('Failed to initialize app. Please refresh the page.', 'Initialization Error', 0);
+  }
+}
+
+// =============================
+// State Management
+// =============================
+async function loadState() {
+  try {
+    const data = await window.IndexedDBService.loadAllData();
+    appState.workers = data.workers || [];
+    appState.projects = data.projects || [];
+    appState.workEntries = data.workEntries || [];
+    console.log('[App] State loaded:', appState);
+  } catch (error) {
+    console.error('[App] Load state failed:', error);
+    throw error;
+  }
+}
+
+async function saveState() {
+  try {
+    await window.IndexedDBService.saveAllData(appState);
+    await window.BackupService.trackChange();
+    console.log('[App] State saved');
+  } catch (error) {
+    console.error('[App] Save state failed:', error);
+    window.Toast.error('Failed to save changes', 'Save Error');
+    throw error;
+  }
+}
+
+// =============================
+// Admin Authentication
+// =============================
+function restoreAdminSession() {
+  const sessionData = localStorage.getItem('mst:adminSession');
+  if (!sessionData) return;
+
+  try {
+    const session = JSON.parse(sessionData);
+    const now = Date.now();
+    const elapsed = now - session.createdAt;
+
+    if (elapsed < ADMIN_SESSION_DURATION) {
+      adminSession = session;
+      console.log('[Admin] Session restored');
+    } else {
+      localStorage.removeItem('mst:adminSession');
+      console.log('[Admin] Session expired');
+    }
+  } catch (error) {
+    console.error('[Admin] Session restore failed:', error);
+    localStorage.removeItem('mst:adminSession');
+  }
+}
+
+function handleSecretClick() {
+  secretClickCount++;
+
+  if (secretClickTimer) clearTimeout(secretClickTimer);
+
+  if (secretClickCount >= SECRET_CLICK_COUNT) {
+    showAdminLogin();
+    secretClickCount = 0;
+    return;
+  }
+
+  secretClickTimer = setTimeout(() => {
+    secretClickCount = 0;
+  }, SECRET_CLICK_WINDOW);
+}
+
+function showAdminLogin() {
+  const password = prompt('Enter admin password:');
+  if (!password) return;
+
+  if (password === ADMIN_PASSWORD) {
+    adminSession = {
+      token: generateToken(),
+      createdAt: Date.now()
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function idbGetAllRecords() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_RECORDS, 'readonly');
-    const store = tx.objectStore(STORE_RECORDS);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function idbPutRecords(records) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_RECORDS, 'readwrite');
-    const store = tx.objectStore(STORE_RECORDS);
-    records.forEach(r => store.put(r));
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function idbBulkReplace(records) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_RECORDS, 'readwrite');
-    const store = tx.objectStore(STORE_RECORDS);
-    const clearReq = store.clear();
-    clearReq.onsuccess = () => {
-      records.forEach(r => store.add(r));
-    };
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function idbGetMeta(key) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_META, 'readonly');
-    const store = tx.objectStore(STORE_META);
-    const req = store.get(key);
-    req.onsuccess = () => resolve(req.result?.value);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function idbSetMeta(key, value) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_META, 'readwrite');
-    const store = tx.objectStore(STORE_META);
-    store.put({ key, value });
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-// =============================
-// Migration from localStorage
-// =============================
-async function maybeMigrateFromLocalStorage() {
-  if (localStorage.getItem(LS_MIGRATED)) return;
-  const rawWorkers = localStorage.getItem('mst:workers');
-  const rawProjects = localStorage.getItem('mst:projects');
-  const rawEntries = localStorage.getItem('mst:workEntries');
-  let workers = []; let projects = []; let entries = [];
-  try { workers = rawWorkers ? JSON.parse(rawWorkers) : []; } catch {}
-  try { projects = rawProjects ? JSON.parse(rawProjects) : []; } catch {}
-  try { entries = rawEntries ? JSON.parse(rawEntries) : []; } catch {}
-  const byId = new Map();
-  [...workers, ...projects, ...entries].forEach(item => {
-    if (!item || !item.id) return;
-    const prev = byId.get(item.id);
-    if (!prev || (item.updatedAt && prev?.updatedAt && item.updatedAt > prev.updatedAt)) {
-      byId.set(item.id, item);
-    }
-  });
-  await idbPutRecords(Array.from(byId.values()));
-  localStorage.setItem(LS_MIGRATED, '1');
-}
-// =============================
-// Load/Save state with LWW
-// =============================
-async function loadStateFromDB() {
-  const records = await idbGetAllRecords();
-  appState = { workers: [], projects: [], workEntries: [] };
-  for (const r of records) {
-    if (r.type === 'worker') appState.workers.push(r);
-    else if (r.type === 'project') appState.projects.push(r);
-    else if (r.type === 'entry') appState.workEntries.push(r);
-  }
-}
-async function saveRecordsLWW(items) {
-  await idbPutRecords(items);
-  await idbSetMeta('lastBackupAt', Date.now());
-  changeCounter += items.length;
-  scheduleAutoBackups();
-}
-// =============================
-// Auto backups: LocalStorage ring buffer
-// =============================
-function getAutoIndex() {
-  const raw = localStorage.getItem(LS_AUTO_INDEX);
-  if (raw) {
-    try { return JSON.parse(raw); } catch {}
-  }
-  return { currentSlot: 0, lastBackupAt: 0, metadata: {} };
-}
-function setAutoIndex(idx) {
-  localStorage.setItem(LS_AUTO_INDEX, JSON.stringify(idx));
-}
-function serializeBackupBlob() {
-  const payload = {
-    version: 1,
-    schemaVersion: SCHEMA_VERSION,
-    createdAt: nowIso(),
-    workers: appState.workers,
-    projects: appState.projects,
-    entries: appState.workEntries,
-    meta: { lastBackupAt: Date.now(), lastVacuumAt: null },
-  };
-  return JSON.stringify(payload);
-}
-function doLocalStorageAutoBackup() {
-  const idx = getAutoIndex();
-  const next = (idx.currentSlot + 1) % AUTO_SLOTS;
-  const data = serializeBackupBlob();
-  localStorage.setItem(AUTO_SLOT_KEY(next), data);
-  const size = new Blob([data]).size;
-  const info = { size, savedAt: nowIso() };
-  const metadata = { ...idx.metadata, [next]: info };
-  const updated = { currentSlot: next, lastBackupAt: Date.now(), metadata };
-  setAutoIndex(updated);
-}
-// =============================
-// Auto backups: OPFS
-// =============================
-async function getOPFSRoot() {
-  if (!('storage' in navigator) || !navigator.storage.getDirectory) return null;
-  try { return await navigator.storage.getDirectory(); } catch { return null; }
-}
-async function ensureOPFSBackupsDir() {
-  const root = await getOPFSRoot();
-  if (!root) return null;
-  try { return await root.getDirectoryHandle('backups', { create: true }); } catch { return null; }
-}
-function opfsFilename(date = new Date()) {
-  const y = date.toISOString().slice(0,10);
-  return `mst-auto-${y}.json`;
-}
-async function listOPFSBackups() {
-  const dir = await ensureOPFSBackupsDir();
-  if (!dir) return [];
-  const files = [];
-  for await (const [name, handle] of dir.entries()) {
-    if (name.endsWith('.json')) files.push({ name, handle });
-  }
-  return files;
-}
-async function writeOPFSBackup() {
-  const dir = await ensureOPFSBackupsDir();
-  if (!dir) return;
-  const name = opfsFilename(new Date());
-  const handle = await dir.getFileHandle(name, { create: true });
-  const writable = await handle.createWritable();
-  const data = serializeBackupBlob();
-  await writable.write(new Blob([data], { type: 'application/json' }));
-  await writable.close();
-  await enforceOPFSRetention(dir);
-}
-async function enforceOPFSRetention(dir) {
-  const entries = await listOPFSBackups();
-  const now = Date.now();
-  // Delete older than 30 days
-  for (const e of entries) {
-    try {
-      const file = await e.handle.getFile();
-      if (now - file.lastModified > 30*24*60*60*1000) {
-        await dir.removeEntry(e.name);
-      }
-    } catch {}
-  }
-  // Retain last 7 by name
-  entries.sort((a,b)=> a.name.localeCompare(b.name));
-  const toDelete = entries.slice(0, Math.max(0, entries.length - 7));
-  for (const e of toDelete) {
-    try { await dir.removeEntry(e.name); } catch {}
-  }
-}
-// =============================
-// Auto backups: File System Access API (optional)
-// =============================
-function hasFSAccess() {
-  return 'showSaveFilePicker' in window;
-}
-async function activateFSAccess() {
-  if (!hasFSAccess()) return null;
-  try {
-    fsAccessHandle = await window.showSaveFilePicker({
-      suggestedName: 'mst-auto-backup.json',
-      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
-    });
-    scheduleFSWrite();
-    return true;
-  } catch { return null; }
-}
-function deactivateFSAccess() {
-  fsAccessHandle = null;
-  if (fsDebounceTimer) { clearTimeout(fsDebounceTimer); fsDebounceTimer = null; }
-}
-function scheduleFSWrite() {
-  if (!fsAccessHandle) return;
-  if (fsDebounceTimer) clearTimeout(fsDebounceTimer);
-  fsDebounceTimer = setTimeout(writeFSAccessBackup, FS_DEBOUNCE_MS);
-}
-async function writeFSAccessBackup() {
-  if (!fsAccessHandle) return;
-  try {
-    const writable = await fsAccessHandle.createWritable();
-    const data = serializeBackupBlob();
-    await writable.write(data);
-    await writable.close();
-  } catch {}
-}
-// =============================
-// Service Worker Sync (best-effort)
-// =============================
-async function tryRegisterSync() {
-  if (!('serviceWorker' in navigator)) return;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    if ('periodicSync' in reg) {
-      try { await reg.periodicSync.register('mst-auto-backup', { minInterval: 24*60*60*1000 }); } catch {}
-    }
-    if ('sync' in reg) {
-      try { await reg.sync.register('mst-backup-sync'); } catch {}
-    }
-  } catch {}
-}
-// =============================
-// Auto-backup scheduler
-// =============================
-function scheduleAutoBackups() {
-  const now = Date.now();
-  if (changeCounter >= AUTO_BACKUP_CHANGE_THRESHOLD || now - lastAutoBackupAt >= AUTO_BACKUP_TIME_MS) {
-    doLocalStorageAutoBackup();
-    writeOPFSBackup();
-    scheduleFSWrite();
-    lastAutoBackupAt = now;
-    changeCounter = 0;
-  }
-}
-// =============================
-// Export / Import
-// =============================
-function exportJSON() {
-  const name = `mst-backup-${new Date().toISOString().replace(/[:]/g,'-').slice(0,19)}.json`;
-  const blob = new Blob([serializeBackupBlob()], { type: 'application/json;charset=utf-8' });
-  downloadBlob(name, blob);
-}
-function exportCSV() {
-  const headers = ['ID','Type','Date','Time','Project','Worker/Workers','Table Number','Hours','Reward Per Worker','Total Amount'];
-  const rows = appState.workEntries.map(e => ({
-    'ID': e.id,
-    'Type': e.entryType || '',
-    'Date': e.date || '',
-    'Time': e.time || '',
-    'Project': e.projectId || '',
-    'Worker/Workers': Array.isArray(e.workerIds) ? e.workerIds.join(' | ') : (e.workerId || ''),
-    'Table Number': e.tableNumber || '',
-    'Hours': e.hours || 0,
-    'Reward Per Worker': e.rewardPerWorker || 0,
-    'Total Amount': e.totalAmount || 0,
-  }));
-  const csv = toCSV(rows, headers);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const name = `mst-entries-${new Date().toISOString().slice(0,10)}.csv`;
-  downloadBlob(name, blob);
-}
-async function importJSONFile(file, { mode = 'soft' } = {}) {
-  const text = await file.text();
-  const parsed = JSON.parse(text);
-  // Validate
-  if (!parsed || parsed.version == null || parsed.schemaVersion == null ||
-      !Array.isArray(parsed.workers) || !Array.isArray(parsed.projects) || !Array.isArray(parsed.entries)) {
-    throw new Error('Invalid backup format');
-  }
-  // Apply import based on mode
-  if (mode === 'hard') {
-    // Hard mode: replace everything
-    appState.workers = parsed.workers || [];
-    appState.projects = parsed.projects || [];
-    appState.workEntries = parsed.entries || [];
-    const allRecords = [...appState.workers, ...appState.projects, ...appState.workEntries];
-    await idbBulkReplace(allRecords);
+    localStorage.setItem('mst:adminSession', JSON.stringify(adminSession));
+    window.Toast.success('Admin access granted', 'Welcome Admin');
+    render();
   } else {
-    // Soft mode: merge with LWW
-    const incoming = [...(parsed.workers || []), ...(parsed.projects || []), ...(parsed.entries || [])];
-    await saveRecordsLWW(incoming);
-    await loadStateFromDB();
+    window.Toast.error('Incorrect password', 'Access Denied');
   }
-  changeCounter = 0;
-  lastAutoBackupAt = Date.now();
+}
+
+function logoutAdmin() {
+  adminSession = null;
+  localStorage.removeItem('mst:adminSession');
+  window.Toast.info('Admin session ended', 'Logged Out');
+  navigateToPage('plan');
+}
+
+function generateToken() {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+function isAdmin() {
+  if (!adminSession) return false;
+
+  const elapsed = Date.now() - adminSession.createdAt;
+  if (elapsed >= ADMIN_SESSION_DURATION) {
+    logoutAdmin();
+    return false;
+  }
+
+  return true;
+}
+
+// =============================
+// Navigation
+// =============================
+function navigateToPage(page) {
+  currentPage = page;
+
+  // Update active nav item
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+    if (item.dataset.page === page) {
+      item.classList.add('active');
+    }
+  });
+
+  // Update page title
+  const titles = {
+    plan: 'Plan',
+    records: 'Records',
+    stats: 'Stats',
+    settings: 'Settings',
+    admin: 'Admin Dashboard'
+  };
+  document.getElementById('pageTitle').textContent = titles[page] || 'MST';
+
   render();
+}
+
+function setupEventListeners() {
+  // Navigation
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      navigateToPage(item.dataset.page);
+    });
+  });
+
+  // Secret admin button
+  document.getElementById('secretAdminButton').addEventListener('click', handleSecretClick);
+
+  // Service Worker messages
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+  }
+}
+
+function handleServiceWorkerMessage(event) {
+  if (event.data.type === 'TRIGGER_BACKUP') {
+    window.BackupService.triggerAutoBackup();
+  }
+  if (event.data.type === 'TRIGGER_AUTO_BACKUP') {
+    window.BackupService.triggerAutoBackup();
+  }
+}
+
+// =============================
+// Rendering
+// =============================
+function render() {
+  const mainContent = document.getElementById('mainContent');
+
+  switch (currentPage) {
+    case 'plan':
+      mainContent.innerHTML = renderPlanPage();
+      break;
+    case 'records':
+      mainContent.innerHTML = renderRecordsPage();
+      break;
+    case 'stats':
+      mainContent.innerHTML = renderStatsPage();
+      break;
+    case 'settings':
+      mainContent.innerHTML = renderSettingsPage();
+      break;
+    case 'admin':
+      if (isAdmin()) {
+        renderAdminPage();
+      } else {
+        window.Toast.error('Admin access required', 'Access Denied');
+        navigateToPage('plan');
+      }
+      break;
+    default:
+      mainContent.innerHTML = '<div class="placeholder"><div class="placeholder-text">Page not found</div></div>';
+  }
+}
+
+// =============================
+// Page Renderers
+// =============================
+function renderPlanPage() {
+  return `
+    <div class="section">
+      <div class="placeholder">
+        <div class="placeholder-icon">📋</div>
+        <div class="placeholder-text">PDF Viewer Coming Soon</div>
+        <p style="margin-top: 16px; color: var(--text-secondary);">
+          This section will display project plans and technical drawings.
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function renderRecordsPage() {
+  const filters = `
+    <div class="filters">
+      <div class="filter-group">
+        <select class="form-select" id="filterProject" onchange="filterRecords()">
+          <option value="">All Projects</option>
+          ${appState.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="filter-group">
+        <select class="form-select" id="filterType" onchange="filterRecords()">
+          <option value="">All Types</option>
+          <option value="task">Task</option>
+          <option value="hourly">Hourly</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="showAddRecordModal()">+ Add Record</button>
+    </div>
+  `;
+
+  if (appState.workEntries.length === 0) {
+    return `
+      <div class="section">
+        ${filters}
+        <div class="empty-state">
+          <div class="empty-state-icon">📝</div>
+          <div class="empty-state-text">No work records yet</div>
+          <button class="btn btn-primary" onclick="showAddRecordModal()" style="margin-top: 20px;">
+            Add First Record
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  const sortedEntries = [...appState.workEntries].sort((a, b) =>
+    new Date(b.timestamp) - new Date(a.timestamp)
+  );
+
+  const recordsList = sortedEntries.map(entry => renderRecordCard(entry)).join('');
+
+  return `
+    <div class="section">
+      ${filters}
+      <div id="recordsList">
+        ${recordsList}
+      </div>
+    </div>
+  `;
+}
+
+function renderRecordCard(entry) {
+  const project = appState.projects.find(p => p.id === entry.projectId);
+  const date = new Date(entry.timestamp);
+  const dateStr = date.toLocaleDateString('cs-CZ');
+  const timeStr = date.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+
+  if (entry.type === 'task') {
+    const totalAmount = entry.rewardPerWorker * entry.workers.length;
+    return `
+      <div class="record-card">
+        <div class="record-header">
+          <span class="record-type task">Task</span>
+          <span class="record-date">${dateStr} ${timeStr}</span>
+        </div>
+        <div class="record-body">
+          <div class="record-detail"><strong>Project:</strong> ${project ? project.name : 'N/A'}</div>
+          <div class="record-detail"><strong>Table:</strong> ${entry.tableNumber}</div>
+          <div class="record-detail"><strong>Workers:</strong> ${entry.workers.map(w => w.workerCode).join(', ')}</div>
+          <div class="record-detail"><strong>Reward/Worker:</strong> ${entry.rewardPerWorker} CZK</div>
+          <div class="record-amount">${totalAmount} CZK</div>
+        </div>
+        <div class="record-footer">
+          <button class="btn-small btn-danger" onclick="deleteRecord('${entry.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  } else {
+    const worker = appState.workers.find(w => w.id === entry.workerId);
+    return `
+      <div class="record-card">
+        <div class="record-header">
+          <span class="record-type hourly">Hourly</span>
+          <span class="record-date">${dateStr} ${timeStr}</span>
+        </div>
+        <div class="record-body">
+          <div class="record-detail"><strong>Project:</strong> ${project ? project.name : 'N/A'}</div>
+          <div class="record-detail"><strong>Worker:</strong> ${worker ? worker.name : 'N/A'}</div>
+          <div class="record-detail"><strong>Hours:</strong> ${entry.totalHours}</div>
+          <div class="record-amount">${entry.totalEarned} CZK</div>
+        </div>
+        <div class="record-footer">
+          <button class="btn-small btn-danger" onclick="deleteRecord('${entry.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function renderStatsPage() {
+  const stats = calculateStats();
+
+  return `
+    <div class="section">
+      <div class="kpi-grid">
+        <div class="kpi-card primary">
+          <div class="kpi-label">Total Earnings</div>
+          <div class="kpi-value">${stats.totalEarnings.toFixed(0)} CZK</div>
+        </div>
+        <div class="kpi-card accent">
+          <div class="kpi-label">Total Hours</div>
+          <div class="kpi-value">${stats.totalHours.toFixed(1)}h</div>
+        </div>
+        <div class="kpi-card secondary">
+          <div class="kpi-label">Total Tasks</div>
+          <div class="kpi-value">${stats.taskCount}</div>
+        </div>
+        <div class="kpi-card warning">
+          <div class="kpi-label">Avg Earnings/Task</div>
+          <div class="kpi-value">${stats.avgPerTask.toFixed(0)} CZK</div>
+        </div>
+      </div>
+
+      <div class="chart-container">
+        <canvas id="earningsChart"></canvas>
+      </div>
+    </div>
+  `;
+}
+
+function renderSettingsPage() {
+  return `
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Workers</h2>
+        <button class="btn btn-primary" onclick="showAddWorkerModal()">+ Add Worker</button>
+      </div>
+      ${renderWorkersList()}
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">Projects</h2>
+        <button class="btn btn-primary" onclick="showAddProjectModal()">+ Add Project</button>
+      </div>
+      ${renderProjectsList()}
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Data Management</h2>
+      <div class="btn-group">
+        <button class="btn btn-accent" onclick="exportData()">📥 Export JSON</button>
+        <button class="btn btn-accent" onclick="exportCSV()">📊 Export CSV</button>
+        <button class="btn btn-secondary" onclick="importData()">📤 Import JSON</button>
+      </div>
+    </div>
+
+    ${isAdmin() ? `
+      <div class="section">
+        <button class="btn btn-primary" onclick="navigateToPage('admin')">
+          🔐 Admin Dashboard
+        </button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function renderAdminPage() {
+  const mainContent = document.getElementById('mainContent');
+  mainContent.innerHTML = '<div class="placeholder"><div class="placeholder-text">Loading admin panel...</div></div>';
+
+  try {
+    const html = await window.AdminBackupPanel.renderAdminBackupPanel();
+    mainContent.innerHTML = `
+      <div class="section">
+        <div class="section-header">
+          <h2 class="section-title">Admin Dashboard</h2>
+          <button class="btn btn-danger" onclick="logoutAdmin()">Logout</button>
+        </div>
+        ${html}
+      </div>
+    `;
+  } catch (error) {
+    console.error('[Admin] Render failed:', error);
+    window.Toast.error('Failed to load admin panel', 'Error');
+    mainContent.innerHTML = '<div class="placeholder"><div class="placeholder-text">Failed to load admin panel</div></div>';
+  }
+}
+
+function renderWorkersList() {
+  if (appState.workers.length === 0) {
+    return `
+      <div class="empty-state">
+        <div class="empty-state-icon">👷</div>
+        <div class="empty-state-text">No workers yet</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="workers-grid">
+      ${appState.workers.map(w => `
+        <div class="worker-card">
+          <div class="worker-header">
+            <div class="worker-avatar" style="background-color: ${w.color}">
+              ${w.name.charAt(0).toUpperCase()}
+            </div>
+            <div class="worker-info">
+              <h3>${w.name}</h3>
+              <div class="worker-code">${w.workerCode}</div>
+            </div>
+          </div>
+          <div class="worker-details">
+            <strong>${w.hourlyRate} CZK/hour</strong>
+          </div>
+          <div class="btn-group">
+            <button class="btn-small" onclick="editWorker('${w.id}')">Edit</button>
+            <button class="btn-small btn-danger" onclick="deleteWorker('${w.id}')">Delete</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderProjectsList() {
+  if (appState.projects.length === 0) {
+    return `
+      <div class="empty-state">
+        <div class="empty-state-icon">🏗️</div>
+        <div class="empty-state-text">No projects yet</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="list">
+      ${appState.projects.map(p => `
+        <div class="list-item">
+          <div class="list-item-content">
+            <div class="list-item-title">${p.name}</div>
+            <div class="list-item-subtitle">${p.location} • ${p.status}</div>
+          </div>
+          <div class="list-item-actions">
+            <button class="btn-small" onclick="editProject('${p.id}')">Edit</button>
+            <button class="btn-small btn-danger" onclick="deleteProject('${p.id}')">Delete</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// =============================
+// Stats Calculations
+// =============================
+function calculateStats() {
+  let totalEarnings = 0;
+  let totalHours = 0;
+  let taskCount = 0;
+
+  appState.workEntries.forEach(entry => {
+    if (entry.type === 'task') {
+      totalEarnings += entry.rewardPerWorker * entry.workers.length;
+      taskCount++;
+    } else {
+      totalEarnings += entry.totalEarned || 0;
+      totalHours += entry.totalHours || 0;
+    }
+  });
+
+  return {
+    totalEarnings,
+    totalHours,
+    taskCount,
+    avgPerTask: taskCount > 0 ? totalEarnings / taskCount : 0
+  };
+}
+
+// =============================
+// Loading State
+// =============================
+function showLoading(message = 'Loading...') {
+  const mainContent = document.getElementById('mainContent');
+  mainContent.innerHTML = `
+    <div class="placeholder">
+      <div class="placeholder-icon" style="animation: pulse 1.5s infinite;">⚡</div>
+      <div class="placeholder-text">${message}</div>
+    </div>
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(1.1); }
+      }
+    </style>
+  `;
+}
+
+function hideLoading() {
+  // Handled by render()
+}
+
+// =============================
+// Utility Functions
+// =============================
+function generateId(prefix = 'id') {
+  return `${prefix}_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
+}
+
+// Export functions to window for HTML onclick handlers
+window.appState = appState;
+window.navigateToPage = navigateToPage;
+window.logoutAdmin = logoutAdmin;
+window.isAdmin = isAdmin;
+window.loadState = loadState;
+window.render = render;
+window.renderRecordCard = renderRecordCard;
+
+// Initialize app when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
 }
