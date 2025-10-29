@@ -22,6 +22,15 @@
 
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- PDF.js for PDF viewing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // Configure PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
 </head>
 <body>
     <!-- App Container -->
@@ -91,6 +100,7 @@
     <script src="utils/advanced-charts.js"></script>
     <script src="utils/export.js"></script>
     <script src="utils/analytics.js"></script>
+    <script src="utils/pdf-viewer.js"></script>
 
     <!-- Storage Modules -->
     <script src="storage/indexeddb.js"></script>

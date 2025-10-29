@@ -289,12 +289,96 @@ function render() {
 function renderPlanPage() {
   return `
     <div class="section">
-      <div class="placeholder">
-        <div class="placeholder-icon">📋</div>
-        <div class="placeholder-text">PDF Viewer Coming Soon</div>
-        <p style="margin-top: 16px; color: var(--text-secondary);">
-          This section will display project plans and technical drawings.
-        </p>
+      <!-- PDF Upload Section -->
+      <div class="pdf-upload-section">
+        <div class="section-header">
+          <h2 class="section-title">📋 Project Plans & Drawings</h2>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="document.getElementById('pdf-file-input').click()">
+              📤 Upload PDF
+            </button>
+            <button class="btn btn-secondary" onclick="showStoredPdfs()">
+              📂 My PDFs
+            </button>
+          </div>
+        </div>
+        <input type="file" id="pdf-file-input" accept="application/pdf" style="display: none;" onchange="handlePdfUpload(event)">
+      </div>
+
+      <!-- PDF Viewer Container -->
+      <div id="pdf-viewer-container" class="pdf-viewer-container">
+        <!-- PDF Controls -->
+        <div class="pdf-controls">
+          <!-- Navigation Controls -->
+          <div class="pdf-control-group">
+            <button id="prev-page" class="pdf-btn" onclick="window.PDFViewer.prevPage()" title="Previous Page">
+              ◀
+            </button>
+            <div class="page-info-wrapper">
+              <input
+                type="number"
+                id="page-input"
+                class="page-input"
+                min="1"
+                value="1"
+                onchange="window.PDFViewer.goToPage(this.value)"
+              >
+              <span id="page-info" class="page-info">Page 0 of 0</span>
+            </div>
+            <button id="next-page" class="pdf-btn" onclick="window.PDFViewer.nextPage()" title="Next Page">
+              ▶
+            </button>
+          </div>
+
+          <!-- Zoom Controls -->
+          <div class="pdf-control-group">
+            <button class="pdf-btn" onclick="window.PDFViewer.zoomOut()" title="Zoom Out">
+              🔍−
+            </button>
+            <span id="zoom-level" class="zoom-level">150%</span>
+            <button class="pdf-btn" onclick="window.PDFViewer.zoomIn()" title="Zoom In">
+              🔍+
+            </button>
+            <button class="pdf-btn" onclick="window.PDFViewer.zoomReset()" title="Reset Zoom">
+              ↺
+            </button>
+          </div>
+
+          <!-- Rotation Controls -->
+          <div class="pdf-control-group">
+            <button class="pdf-btn" onclick="window.PDFViewer.rotateCounterClockwise()" title="Rotate Left">
+              ↶
+            </button>
+            <button class="pdf-btn" onclick="window.PDFViewer.rotateClockwise()" title="Rotate Right">
+              ↷
+            </button>
+          </div>
+
+          <!-- Utility Controls -->
+          <div class="pdf-control-group">
+            <button class="pdf-btn" onclick="window.PDFViewer.toggleFullScreen()" title="Fullscreen">
+              ⛶
+            </button>
+            <button class="pdf-btn" onclick="window.PDFViewer.printPdf()" title="Print">
+              🖨
+            </button>
+          </div>
+        </div>
+
+        <!-- PDF Canvas -->
+        <div class="pdf-canvas-container">
+          <canvas id="pdf-canvas"></canvas>
+          <div id="pdf-empty-state" class="pdf-empty-state">
+            <div class="empty-state-icon">📄</div>
+            <div class="empty-state-text">No PDF loaded</div>
+            <p style="margin-top: 16px; color: var(--text-secondary);">
+              Upload a PDF file to view project plans and technical drawings
+            </p>
+            <button class="btn btn-primary" onclick="document.getElementById('pdf-file-input').click()" style="margin-top: 20px;">
+              📤 Upload PDF
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -912,6 +996,112 @@ function generateId(prefix = 'id') {
   return `${prefix}_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
 }
 
+// =============================
+// PDF Viewer Functions
+// =============================
+async function handlePdfUpload(event) {
+  const file = event.target.files[0];
+  if (file) {
+    await window.PDFViewer.loadPdfFromFile(file);
+
+    // Hide empty state
+    const emptyState = document.getElementById('pdf-empty-state');
+    if (emptyState) {
+      emptyState.style.display = 'none';
+    }
+  }
+  // Reset input so same file can be selected again
+  event.target.value = '';
+}
+
+async function showStoredPdfs() {
+  try {
+    const pdfs = await window.PDFViewer.getStoredPdfs();
+
+    if (pdfs.length === 0) {
+      window.Toast.info('No stored PDFs found', 'Info');
+      return;
+    }
+
+    const pdfList = pdfs.map(pdf => {
+      const date = new Date(pdf.uploadedAt).toLocaleDateString('cs-CZ');
+      const size = window.PDFViewer.formatFileSize(pdf.size);
+      return `
+        <div class="list-item">
+          <div class="list-item-content">
+            <div class="list-item-title">📄 ${pdf.filename}</div>
+            <div class="list-item-subtitle">${date} • ${size}</div>
+          </div>
+          <div class="list-item-actions">
+            <button class="btn-small" onclick="loadStoredPdf(${pdf.id})">Open</button>
+            <button class="btn-small btn-danger" onclick="deleteStoredPdf(${pdf.id})">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const modalBody = document.getElementById('modalBody');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalFooter = document.getElementById('modalFooter');
+
+    modalTitle.textContent = 'My PDFs';
+    modalBody.innerHTML = pdfList;
+    modalFooter.innerHTML = `
+      <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    `;
+
+    document.getElementById('modalOverlay').classList.add('active');
+  } catch (error) {
+    console.error('[PDF] Show stored PDFs failed:', error);
+    window.Toast.error('Failed to load stored PDFs', 'Error');
+  }
+}
+
+async function loadStoredPdf(id) {
+  try {
+    const pdfs = await window.PDFViewer.getStoredPdfs();
+    const pdf = pdfs.find(p => p.id === id);
+
+    if (!pdf) {
+      window.Toast.error('PDF not found', 'Error');
+      return;
+    }
+
+    await window.PDFViewer.loadPdfFromData(pdf.data, pdf.filename);
+
+    // Hide empty state
+    const emptyState = document.getElementById('pdf-empty-state');
+    if (emptyState) {
+      emptyState.style.display = 'none';
+    }
+
+    closeModal();
+    window.Toast.success(`Loaded ${pdf.filename}`, 'PDF Loaded');
+  } catch (error) {
+    console.error('[PDF] Load stored PDF failed:', error);
+    window.Toast.error('Failed to load PDF', 'Error');
+  }
+}
+
+async function deleteStoredPdf(id) {
+  if (!confirm('Are you sure you want to delete this PDF?')) {
+    return;
+  }
+
+  try {
+    await window.PDFViewer.deletePdf(id);
+
+    // Refresh the list
+    showStoredPdfs();
+  } catch (error) {
+    console.error('[PDF] Delete failed:', error);
+  }
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('active');
+}
+
 // Export functions to window for HTML onclick handlers
 window.appState = appState;
 window.navigateToPage = navigateToPage;
@@ -920,6 +1110,11 @@ window.isAdmin = isAdmin;
 window.loadState = loadState;
 window.render = render;
 window.renderRecordCard = renderRecordCard;
+window.handlePdfUpload = handlePdfUpload;
+window.showStoredPdfs = showStoredPdfs;
+window.loadStoredPdf = loadStoredPdf;
+window.deleteStoredPdf = deleteStoredPdf;
+window.closeModal = closeModal;
 
 // Initialize app when DOM is ready
 if (document.readyState === 'loading') {
