@@ -19,6 +19,9 @@
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <!-- App Container -->
@@ -53,6 +56,10 @@
                 <span class="nav-icon">📊</span>
                 <span class="nav-label">Stats</span>
             </button>
+            <button class="nav-item" data-page="analytics">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-label">Analytics</span>
+            </button>
             <button class="nav-item" data-page="settings">
                 <span class="nav-icon">⚙️</span>
                 <span class="nav-label">Settings</span>
@@ -81,6 +88,9 @@
     <script src="utils/validation.js"></script>
     <script src="utils/crud.js"></script>
     <script src="utils/charts.js"></script>
+    <script src="utils/advanced-charts.js"></script>
+    <script src="utils/export.js"></script>
+    <script src="utils/analytics.js"></script>
 
     <!-- Storage Modules -->
     <script src="storage/indexeddb.js"></script>

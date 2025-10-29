@@ -22,7 +22,10 @@ const STATIC_FILES = [
   '/utils/toast.js',
   '/utils/validation.js',
   '/utils/crud.js',
-  '/utils/charts.js'
+  '/utils/charts.js',
+  '/utils/advanced-charts.js',
+  '/utils/export.js',
+  '/utils/analytics.js'
 ];
 
 // Install event - cache static assets
