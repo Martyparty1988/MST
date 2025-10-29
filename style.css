@@ -1460,3 +1460,181 @@ body {
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+/* ============================================
+   BACKUP PANEL STYLES
+   ============================================ */
+
+.backup-section {
+  margin-top: 2rem;
+}
+
+.backup-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.fs-access-section {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.backup-manager {
+  max-width: 900px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.backup-list {
+  margin-bottom: 2rem;
+}
+
+.backup-list h3 {
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.backup-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.backup-table thead {
+  background-color: var(--color-secondary);
+}
+
+.backup-table th,
+.backup-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.backup-table th {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.backup-table td {
+  color: var(--color-text-secondary);
+}
+
+.btn-small {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  margin-right: 0.5rem;
+  background-color: var(--color-secondary);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-small:hover {
+  background-color: var(--color-secondary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-small.btn-danger {
+  background-color: rgba(var(--color-error-rgb), 0.15);
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.btn-small.btn-danger:hover {
+  background-color: var(--color-error);
+  color: white;
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Admin Backup Status */
+.admin-backup-status {
+  margin-bottom: 2rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background-color: var(--color-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.status-label {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.status-value {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.admin-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.section-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.section-card h3 {
+  margin-bottom: 0.5rem;
+  font-size: var(--font-size-xl);
+}
+
+.section-description {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .backup-actions {
+    flex-direction: column;
+  }
+  
+  .backup-actions button {
+    width: 100%;
+  }
+  
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .backup-table {
+    font-size: 0.875rem;
+  }
+  
+  .backup-table th,
+  .backup-table td {
+    padding: 0.5rem;
+  }
+}
