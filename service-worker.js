@@ -18,7 +18,11 @@ const STATIC_FILES = [
   '/storage/migration.js',
   '/storage/backup.js',
   '/storage/vacuum.js',
-  '/admin/backupPanel.js'
+  '/admin/backupPanel.js',
+  '/utils/toast.js',
+  '/utils/validation.js',
+  '/utils/crud.js',
+  '/utils/charts.js'
 ];
 
 // Install event - cache static assets

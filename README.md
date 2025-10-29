@@ -24,7 +24,12 @@ Professional time tracking Progressive Web App for solar panel installation team
 - Real-time KPI dashboard
 - Total earnings and hours tracking
 - Average earnings per task
-- Visual charts (Chart.js integration coming soon)
+- **Interactive Chart.js visualizations:**
+  - Earnings over time (line chart with gradient)
+  - Earnings by worker (bar chart)
+  - Earnings by project (doughnut chart)
+- Automatic theme adaptation (light/dark mode)
+- Responsive charts for all devices
 
 ### ⚙️ **Settings & Management**
 - **Worker Management**: Add, edit, delete workers with custom colors

@@ -238,6 +238,11 @@ function handleServiceWorkerMessage(event) {
 function render() {
   const mainContent = document.getElementById('mainContent');
 
+  // Destroy existing charts before rendering new page
+  if (window.Charts) {
+    window.Charts.destroyAllCharts();
+  }
+
   switch (currentPage) {
     case 'plan':
       mainContent.innerHTML = renderPlanPage();
@@ -247,6 +252,10 @@ function render() {
       break;
     case 'stats':
       mainContent.innerHTML = renderStatsPage();
+      // Initialize charts after rendering
+      if (window.Charts && appState.workEntries.length > 0) {
+        window.Charts.initializeStatsCharts(appState);
+      }
       break;
     case 'settings':
       mainContent.innerHTML = renderSettingsPage();
@@ -383,6 +392,42 @@ function renderRecordCard(entry) {
 function renderStatsPage() {
   const stats = calculateStats();
 
+  if (appState.workEntries.length === 0) {
+    return `
+      <div class="section">
+        <div class="kpi-grid">
+          <div class="kpi-card primary">
+            <div class="kpi-label">Total Earnings</div>
+            <div class="kpi-value">0 CZK</div>
+          </div>
+          <div class="kpi-card accent">
+            <div class="kpi-label">Total Hours</div>
+            <div class="kpi-value">0h</div>
+          </div>
+          <div class="kpi-card secondary">
+            <div class="kpi-label">Total Tasks</div>
+            <div class="kpi-value">0</div>
+          </div>
+          <div class="kpi-card warning">
+            <div class="kpi-label">Avg Earnings/Task</div>
+            <div class="kpi-value">0 CZK</div>
+          </div>
+        </div>
+
+        <div class="empty-state" style="margin-top: 40px;">
+          <div class="empty-state-icon">📊</div>
+          <div class="empty-state-text">No data to visualize yet</div>
+          <p style="margin-top: 16px; color: var(--text-secondary);">
+            Add some work records to see beautiful charts and analytics!
+          </p>
+          <button class="btn btn-primary" onclick="navigateToPage('records')" style="margin-top: 20px;">
+            Go to Records
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   return `
     <div class="section">
       <div class="kpi-grid">
@@ -404,8 +449,22 @@ function renderStatsPage() {
         </div>
       </div>
 
+      <!-- Earnings Over Time Chart -->
       <div class="chart-container">
         <canvas id="earningsChart"></canvas>
+      </div>
+
+      <!-- Two-column layout for additional charts -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px; margin-top: 24px;">
+        <!-- Worker Comparison Chart -->
+        <div class="chart-container" style="height: 350px;">
+          <canvas id="workerComparisonChart"></canvas>
+        </div>
+
+        <!-- Project Breakdown Chart -->
+        <div class="chart-container" style="height: 350px;">
+          <canvas id="projectBreakdownChart"></canvas>
+        </div>
       </div>
     </div>
   `;
