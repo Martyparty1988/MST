@@ -1,3 +1,47 @@
+// =============================================
+// MST - STORAGE MODULE INTEGRATION
+// =============================================
+
+// Rewrite persistence from localStorage to IndexedDB (with auto-backup tracking)
+// Override default save/load methods to work with new system
+
+// Save all state to IndexedDB
+async function saveToIndexedDB() {
+  try {
+    await window.IndexedDBService.saveAllData({
+      workers: appState.workers,
+      projects: appState.projects,
+      workEntries: appState.workEntries
+    });
+
+    // Auto-backup trigger (if available)
+    if (window.BackupService && typeof window.BackupService.trackChange === 'function') {
+      await window.BackupService.trackChange();
+    }
+    console.log('[Storage] Data saved to IndexedDB');
+  } catch (e) {
+    console.error('[Storage] IndexedDB save failed:', e);
+    // fallback to localStorage if needed
+  }
+}
+
+// Load all state from IndexedDB
+async function loadFromIndexedDB() {
+  try {
+    const data = await window.IndexedDBService.loadAllData();
+    if (data.workers?.length || data.projects?.length || data.workEntries?.length) {
+      appState.workers = data.workers || [];
+      appState.projects = data.projects || [];
+      appState.workEntries = data.workEntries || [];
+      console.log('[Storage] Data loaded from IndexedDB');
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('[Storage] IndexedDB load failed:', e);
+    return false;
+  }
+}
 /*
 MST - Marty Solar Tracker
 Refactor: IndexedDB persistent storage + multilayer backup strategy
