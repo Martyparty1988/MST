@@ -7,12 +7,12 @@
     <link rel="stylesheet" href="style.css">
     
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#21808d">
     <meta name="description" content="Solar Panel Installation Tracking App" data-i18n-attr="content" data-i18n="app.description">
     
     <!-- Apple Touch Icon -->
-    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
     
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/icons/icon-192x192.png">
@@ -38,16 +38,14 @@
                 <button class="header-logo" id="secretAdminButton">
                     <span class="logo-icon">☀️</span>
                 </button>
-                <h1 class="header-title" id="pageTitle" data-i18n="navigation.home">Plan</h1>
+                <h1 class="header-title" data-i18n="navigation.home" id="pageTitle">Plan</h1>
                 <div class="header-spacer"></div>
             </div>
         </header>
-
         <!-- Main Content -->
         <main class="main-content" id="mainContent">
             <!-- Dynamic content loaded here -->
         </main>
-
         <!-- Bottom Navigation -->
         <nav class="bottom-nav">
             <button class="nav-item active" data-page="plan">
@@ -72,7 +70,6 @@
             </button>
         </nav>
     </div>
-
     <!-- Modal Overlay -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
@@ -88,7 +85,6 @@
             </div>
         </div>
     </div>
-
     <!-- i18n Module (MUST BE LOADED FIRST) -->
     <script src="utils/i18n.js"></script>
     
@@ -111,39 +107,20 @@
     <!-- Admin Modules -->
     <script src="admin/backupPanel.js"></script>
     
-    <!-- Main App -->
+    <!-- Loading and Main App -->
+    <script src="utils/loading.js"></script>
     <script src="app.js"></script>
     
     <!-- PWA Registration -->
     <script>
-        // Register Service Worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then(registration => {
-                        console.log('[PWA] Service Worker registered:', registration.scope);
-                        
-                        // Check for updates
-                        registration.addEventListener('updatefound', () => {
-                            const newWorker = registration.installing;
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    console.log('[PWA] New version available');
-                                    // Use i18n for the confirmation message
-                                    const message = window.i18n ? window.i18n.t('messages.updateAvailable') : 'Nová verze aplikace je dostupná. Načíst?';
-                                    if (confirm(message)) {
-                                        newWorker.postMessage({ type: 'SKIP_WAITING' });
-                                        window.location.reload();
-                                    }
-                                }
-                            });
-                        });
-                    })
-                    .catch(error => {
-                        console.error('[PWA] Service Worker registration failed:', error);
-                    });
-            });
-        }
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('./service-worker.js', { scope: './' })
+      .then(reg => console.log('[PWA] SW registered:', reg.scope))
+      .catch(err => console.error('[PWA] SW registration failed:', err));
+  });
+}
     </script>
 </body>
 </html>
