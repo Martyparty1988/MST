@@ -1,0 +1,71 @@
+{
+  "app": {
+    "title": "MST - Mobilní Správa Testu",
+    "description": "Progresivní webová aplikace pro správu testů"
+  },
+  "navigation": {
+    "home": "Domů",
+    "tests": "Testy",
+    "settings": "Nastavení",
+    "admin": "Administrace"
+  },
+  "home": {
+    "welcome": "Vítejte v MST",
+    "subtitle": "Začněte vytvářet a spravovat své testy",
+    "quickStart": "Rychlý start",
+    "recentTests": "Nedávné testy"
+  },
+  "tests": {
+    "title": "Správa testů",
+    "createNew": "Vytvořit nový test",
+    "editTest": "Upravit test",
+    "deleteTest": "Smazat test",
+    "noTests": "Žádné testy k zobrazení",
+    "testName": "Název testu",
+    "testDescription": "Popis testu",
+    "questions": "Otázky",
+    "addQuestion": "Přidat otázku"
+  },
+  "settings": {
+    "title": "Nastavení",
+    "language": "Jazyk",
+    "theme": "Motiv",
+    "notifications": "Oznámení",
+    "dataManagement": "Správa dat",
+    "exportData": "Exportovat data",
+    "importData": "Importovat data",
+    "clearData": "Vymazat data",
+    "czech": "Čeština",
+    "english": "Angličtina"
+  },
+  "admin": {
+    "title": "Administrace",
+    "users": "Uživatelé",
+    "statistics": "Statistiky",
+    "systemInfo": "Systémové informace",
+    "translations": "Překlady",
+    "exportTranslations": "Exportovat překlady",
+    "importTranslations": "Importovat překlady"
+  },
+  "buttons": {
+    "save": "Uložit",
+    "cancel": "Zrušit",
+    "delete": "Smazat",
+    "edit": "Upravit",
+    "add": "Přidat",
+    "remove": "Odebrat",
+    "confirm": "Potvrdit",
+    "close": "Zavřít",
+    "submit": "Odeslat",
+    "back": "Zpět"
+  },
+  "messages": {
+    "success": "Operace proběhla úspěšně",
+    "error": "Nastala chyba",
+    "loading": "Načítání...",
+    "noData": "Žádná data k zobrazení",
+    "confirmDelete": "Opravdu chcete smazat tuto položku?",
+    "saved": "Uloženo",
+    "deleted": "Smazáno"
+  }
+}
