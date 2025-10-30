@@ -3,26 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MST - Marty Solar Tracker</title>
+    <title data-i18n="app.title">MST - Marty Solar Tracker</title>
     <link rel="stylesheet" href="style.css">
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#21808d">
-    <meta name="description" content="Solar Panel Installation Tracking App">
+    <meta name="description" content="Solar Panel Installation Tracking App" data-i18n-attr="content" data-i18n="app.description">
     
     <!-- Apple Touch Icon -->
     <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
     
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/icons/icon-192x192.png">
-
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
     <!-- PDF.js for PDF viewing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
@@ -38,16 +35,16 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <button id="secretAdminButton" class="header-logo">
+                <button class="header-logo" id="secretAdminButton">
                     <span class="logo-icon">☀️</span>
                 </button>
-                <h1 id="pageTitle" class="header-title">Plan</h1>
+                <h1 class="header-title" id="pageTitle" data-i18n="navigation.home">Plan</h1>
                 <div class="header-spacer"></div>
             </div>
         </header>
 
         <!-- Main Content -->
-        <main id="mainContent" class="main-content">
+        <main class="main-content" id="mainContent">
             <!-- Dynamic content loaded here -->
         </main>
 
@@ -55,11 +52,11 @@
         <nav class="bottom-nav">
             <button class="nav-item active" data-page="plan">
                 <span class="nav-icon">📋</span>
-                <span class="nav-label">Plan</span>
+                <span class="nav-label" data-i18n="navigation.home">Plan</span>
             </button>
             <button class="nav-item" data-page="records">
                 <span class="nav-icon">📝</span>
-                <span class="nav-label">Records</span>
+                <span class="nav-label" data-i18n="navigation.tests">Records</span>
             </button>
             <button class="nav-item" data-page="stats">
                 <span class="nav-icon">📊</span>
@@ -71,13 +68,13 @@
             </button>
             <button class="nav-item" data-page="settings">
                 <span class="nav-icon">⚙️</span>
-                <span class="nav-label">Settings</span>
+                <span class="nav-label" data-i18n="navigation.settings">Settings</span>
             </button>
         </nav>
     </div>
 
     <!-- Modal Overlay -->
-    <div id="modalOverlay" class="modal-overlay">
+    <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <div class="modal-header">
                 <h2 class="modal-title" id="modalTitle">Modal</h2>
@@ -92,6 +89,9 @@
         </div>
     </div>
 
+    <!-- i18n Module (MUST BE LOADED FIRST) -->
+    <script src="utils/i18n.js"></script>
+    
     <!-- Utility Modules -->
     <script src="utils/toast.js"></script>
     <script src="utils/validation.js"></script>
@@ -101,16 +101,16 @@
     <script src="utils/export.js"></script>
     <script src="utils/analytics.js"></script>
     <script src="utils/pdf-viewer.js"></script>
-
+    
     <!-- Storage Modules -->
     <script src="storage/indexeddb.js"></script>
     <script src="storage/migration.js"></script>
     <script src="storage/backup.js"></script>
     <script src="storage/vacuum.js"></script>
-
+    
     <!-- Admin Modules -->
     <script src="admin/backupPanel.js"></script>
-
+    
     <!-- Main App -->
     <script src="app.js"></script>
     
@@ -129,7 +129,9 @@
                             newWorker.addEventListener('statechange', () => {
                                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                                     console.log('[PWA] New version available');
-                                    if (confirm('Nová verze aplikace je dostupná. Načíst?')) {
+                                    // Use i18n for the confirmation message
+                                    const message = window.i18n ? window.i18n.t('messages.updateAvailable') : 'Nová verze aplikace je dostupná. Načíst?';
+                                    if (confirm(message)) {
                                         newWorker.postMessage({ type: 'SKIP_WAITING' });
                                         window.location.reload();
                                     }
