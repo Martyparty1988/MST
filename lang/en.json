@@ -1,0 +1,71 @@
+{
+  "app": {
+    "title": "MST - Mobile Test Management",
+    "description": "Progressive web application for test management"
+  },
+  "navigation": {
+    "home": "Home",
+    "tests": "Tests",
+    "settings": "Settings",
+    "admin": "Administration"
+  },
+  "home": {
+    "welcome": "Welcome to MST",
+    "subtitle": "Start creating and managing your tests",
+    "quickStart": "Quick Start",
+    "recentTests": "Recent Tests"
+  },
+  "tests": {
+    "title": "Test Management",
+    "createNew": "Create New Test",
+    "editTest": "Edit Test",
+    "deleteTest": "Delete Test",
+    "noTests": "No tests to display",
+    "testName": "Test Name",
+    "testDescription": "Test Description",
+    "questions": "Questions",
+    "addQuestion": "Add Question"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "notifications": "Notifications",
+    "dataManagement": "Data Management",
+    "exportData": "Export Data",
+    "importData": "Import Data",
+    "clearData": "Clear Data",
+    "czech": "Czech",
+    "english": "English"
+  },
+  "admin": {
+    "title": "Administration",
+    "users": "Users",
+    "statistics": "Statistics",
+    "systemInfo": "System Information",
+    "translations": "Translations",
+    "exportTranslations": "Export Translations",
+    "importTranslations": "Import Translations"
+  },
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "remove": "Remove",
+    "confirm": "Confirm",
+    "close": "Close",
+    "submit": "Submit",
+    "back": "Back"
+  },
+  "messages": {
+    "success": "Operation completed successfully",
+    "error": "An error occurred",
+    "loading": "Loading...",
+    "noData": "No data to display",
+    "confirmDelete": "Are you sure you want to delete this item?",
+    "saved": "Saved",
+    "deleted": "Deleted"
+  }
+}
