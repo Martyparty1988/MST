@@ -7,27 +7,35 @@ const CACHE_VERSION = 'mst-v1.0.0';
 const CACHE_NAME = `${CACHE_VERSION}-static`;
 const DATA_CACHE_NAME = `${CACHE_VERSION}-data`;
 
+// Determine scope-aware URLs so the PWA works from subdirectories (e.g. GitHub Pages)
+const SCOPE_URL = new URL('./', self.location.href);
+const resolveUrl = (path = './') => new URL(path, SCOPE_URL).toString();
+
 // Files to cache for offline use
-const STATIC_FILES = [
-  '/',
-  '/index.html',
-  '/app.js',
-  '/style.css',
-  '/manifest.json',
-  '/storage/indexeddb.js',
-  '/storage/migration.js',
-  '/storage/backup.js',
-  '/storage/vacuum.js',
-  '/admin/backupPanel.js',
-  '/utils/toast.js',
-  '/utils/validation.js',
-  '/utils/crud.js',
-  '/utils/charts.js',
-  '/utils/advanced-charts.js',
-  '/utils/export.js',
-  '/utils/analytics.js',
-  '/utils/pdf-viewer.js'
+const STATIC_FILE_PATHS = [
+  './',
+  './index.html',
+  './app.js',
+  './style.css',
+  './manifest.json',
+  './storage/indexeddb.js',
+  './storage/migration.js',
+  './storage/backup.js',
+  './storage/vacuum.js',
+  './admin/backupPanel.js',
+  './utils/toast.js',
+  './utils/validation.js',
+  './utils/crud.js',
+  './utils/charts.js',
+  './utils/advanced-charts.js',
+  './utils/export.js',
+  './utils/analytics.js',
+  './utils/pdf-viewer.js',
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png'
 ];
+
+const STATIC_FILES = STATIC_FILE_PATHS.map((path) => resolveUrl(path));
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
@@ -134,7 +142,12 @@ self.addEventListener('fetch', (event) => {
 
           // Return offline page if available
           if (request.destination === 'document') {
-            return caches.match('/index.html');
+            return caches.match(resolveUrl('./')).then((cachedRoot) => {
+              if (cachedRoot) {
+                return cachedRoot;
+              }
+              return caches.match(resolveUrl('index.html'));
+            });
           }
 
           return new Response('Network error', {
@@ -181,8 +194,8 @@ self.addEventListener('message', (event) => {
 self.addEventListener('push', (event) => {
   const options = {
     body: event.data ? event.data.text() : 'New notification from MST',
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-192x192.png',
+    icon: resolveUrl('icons/icon-192x192.png'),
+    badge: resolveUrl('icons/icon-192x192.png'),
     vibrate: [200, 100, 200],
     data: {
       dateOfArrival: Date.now(),
@@ -200,7 +213,7 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   event.waitUntil(
-    clients.openWindow('/')
+    clients.openWindow(resolveUrl('./'))
   );
 });
 
