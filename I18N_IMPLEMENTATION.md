@@ -21,7 +21,7 @@
   - `data-i18n` attributes on key elements:
     - Title: `data-i18n="app.title"`
     - Meta description: `data-i18n="app.description"` with `data-i18n-attr="content"`
-    - Navigation labels: `data-i18n="navigation.home"`, etc.
+    - Navigation labels: `data-i18n="navigation.plan"`, `data-i18n="navigation.records"`, etc.
   - PWA service worker updated to use i18n for update messages
 
 ## 🔧 Required Manual Integrations

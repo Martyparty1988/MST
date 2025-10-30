@@ -4,8 +4,10 @@
     "description": "Progressive web application for test management"
   },
   "navigation": {
-    "home": "Home",
-    "tests": "Tests",
+    "plan": "Plan",
+    "records": "Records",
+    "stats": "Statistics",
+    "analytics": "Analytics",
     "settings": "Settings",
     "admin": "Administration"
   },
@@ -28,15 +30,18 @@
   },
   "settings": {
     "title": "Settings",
-    "language": "Language",
+    "language": {
+      "title": "Language",
+      "english": "English",
+      "czech": "Czech",
+      "info": "Your language preference is saved for future visits."
+    },
     "theme": "Theme",
     "notifications": "Notifications",
     "dataManagement": "Data Management",
     "exportData": "Export Data",
     "importData": "Import Data",
-    "clearData": "Clear Data",
-    "czech": "Czech",
-    "english": "English"
+    "clearData": "Clear Data"
   },
   "admin": {
     "title": "Administration",
@@ -61,11 +66,15 @@
   },
   "messages": {
     "success": "Operation completed successfully",
+    "successTitle": "Success",
     "error": "An error occurred",
+    "errorTitle": "Error",
     "loading": "Loading...",
     "noData": "No data to display",
     "confirmDelete": "Are you sure you want to delete this item?",
     "saved": "Saved",
-    "deleted": "Deleted"
+    "deleted": "Deleted",
+    "languageChanged": "Language changed successfully",
+    "languageChangeFailed": "Unable to change language"
   }
 }

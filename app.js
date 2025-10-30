@@ -25,11 +25,27 @@ let currentPage = 'plan';
 // =============================
 // I18N Helpers (switch only; actual implementation in i18n module)
 // =============================
-function switchLanguage(lang) {
+async function switchLanguage(lang) {
   if (window.i18n && typeof window.i18n.setLanguage === 'function') {
-    window.i18n.setLanguage(lang);
-    // re-render current page to reflect language change
-    if (typeof render === 'function') render();
+    try {
+      await window.i18n.setLanguage(lang);
+      // re-render current page to reflect language change
+      if (typeof render === 'function') render();
+
+      if (window.Toast && typeof window.Toast.success === 'function') {
+        const message = window.i18n.t('messages.languageChanged');
+        const title = window.i18n.t('messages.successTitle');
+        window.Toast.success(message, title);
+      }
+    } catch (error) {
+      console.error('Language switch failed', error);
+      if (window.Toast && typeof window.Toast.error === 'function') {
+        const fallbackTitle = 'Error';
+        const message = window.i18n?.t('messages.languageChangeFailed') || 'Failed to change language';
+        const title = window.i18n?.t('messages.errorTitle') || fallbackTitle;
+        window.Toast.error(message, title);
+      }
+    }
   }
 }
 
@@ -68,12 +84,26 @@ function renderSettingsPage() {
   langSection.innerHTML = `
     <h3 data-i18n="settings.language.title">Language</h3>
     <div class="lang-switcher">
-      <button type="button" onclick="switchLanguage('en')" data-i18n="settings.language.english">English</button>
-      <button type="button" onclick="switchLanguage('cs')" data-i18n="settings.language.czech">Čeština</button>
+      <button type="button" class="lang-button" data-lang-btn="en" onclick="switchLanguage('en')">
+        <span data-i18n="settings.language.english">English</span>
+      </button>
+      <button type="button" class="lang-button" data-lang-btn="cs" onclick="switchLanguage('cs')">
+        <span data-i18n="settings.language.czech">Čeština</span>
+      </button>
     </div>
+    <p class="lang-info" data-i18n="settings.language.info">Your language preference is saved for future visits.</p>
   `;
 
   container.appendChild(langSection);
+
+  if (window.i18n) {
+    if (typeof window.i18n.applyTranslations === 'function') {
+      window.i18n.applyTranslations();
+    }
+    if (typeof window.i18n.updateLanguageSelector === 'function') {
+      window.i18n.updateLanguageSelector();
+    }
+  }
 }
 
 // Export functions to window for HTML onclick handlers
