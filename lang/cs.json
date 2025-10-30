@@ -1,51 +1,160 @@
 {
   "app": {
-    "title": "MST - Mobilní Správa Testu",
-    "description": "Progresivní webová aplikace pro správu testů"
+    "title": "MST - Marty Solar Tracker",
+    "description": "Progresivní webová aplikace pro týmy instalující solární panely"
   },
   "navigation": {
-    "home": "Domů",
-    "tests": "Testy",
+    "plan": "Plán",
+    "records": "Záznamy",
+    "stats": "Statistiky",
+    "analytics": "Analýzy",
     "settings": "Nastavení",
     "admin": "Administrace"
   },
-  "home": {
-    "welcome": "Vítejte v MST",
-    "subtitle": "Začněte vytvářet a spravovat své testy",
-    "quickStart": "Rychlý start",
-    "recentTests": "Nedávné testy"
+  "messages": {
+    "success": "Operace proběhla úspěšně",
+    "successTitle": "Úspěch",
+    "error": "Nastala chyba",
+    "errorTitle": "Chyba",
+    "infoTitle": "Informace",
+    "loading": "Načítám…",
+    "noData": "Žádná data k zobrazení",
+    "dataLoadFailed": "Nepodařilo se načíst uložená data.",
+    "initFailed": "Aplikaci se nepodařilo inicializovat.",
+    "confirmDelete": "Opravdu chcete tuto položku smazat?",
+    "saved": "Uloženo",
+    "deleted": "Smazáno",
+    "languageChanged": "Jazyk byl úspěšně změněn",
+    "languageChangeFailed": "Jazyk se nepodařilo změnit"
   },
-  "tests": {
-    "title": "Správa testů",
-    "createNew": "Vytvořit nový test",
-    "editTest": "Upravit test",
-    "deleteTest": "Smazat test",
-    "noTests": "Žádné testy k zobrazení",
-    "testName": "Název testu",
-    "testDescription": "Popis testu",
-    "questions": "Otázky",
-    "addQuestion": "Přidat otázku"
+  "plan": {
+    "heroTitle": "Plány instalací a dokumentace",
+    "heroSubtitle": "Mějte po ruce aktuální výkresy, dělejte poznámky a sdílejte novinky s týmem.",
+    "uploadLabel": "Nahrát plán instalace (PDF)",
+    "refreshStored": "Obnovit uložené plány",
+    "clearViewer": "Vyčistit prohlížeč",
+    "goToLabel": "Přejít na",
+    "storedTitle": "Uložené PDF",
+    "storedSubtitle": "Plány se ukládají do prohlížeče pro práci offline.",
+    "loadingPlans": "Načítám uložené plány…",
+    "noStored": "Zatím nejsou uložená žádná PDF.",
+    "open": "Otevřít",
+    "delete": "Smazat",
+    "loadFailed": "Uložené plány se nepodařilo načíst.",
+    "projectsTitle": "Aktivní projekty",
+    "noProjects": "Žádné aktivní projekty. Přidejte je v Nastavení.",
+    "location": "Lokalita",
+    "schedule": "Harmonogram"
+  },
+  "records": {
+    "title": "Pracovní záznamy",
+    "subtitle": "Sledujte denní postup instalace a hodinovou práci.",
+    "addButton": "Přidat záznam",
+    "statEarnings": "Celkové výdělky",
+    "statTasks": "Dokončené úkoly",
+    "statHours": "Evidované hodiny",
+    "filterProject": "Projekt",
+    "filterAllProjects": "Všechny projekty",
+    "filterType": "Typ",
+    "filterAllTypes": "Všechny typy",
+    "filterTasks": "Úkolové záznamy",
+    "filterHourly": "Hodinové záznamy",
+    "applyFilters": "Použít filtry",
+    "empty": "Záznamy zatím chybí. Přidejte první záznam a začněte sledovat.",
+    "unknownProject": "Neznámý projekt",
+    "taskType": "Úkol",
+    "table": "Stůl",
+    "workers": "Pracovníci",
+    "noWorkers": "Nejsou přiřazeni žádní pracovníci",
+    "rewardPerWorker": "Odměna / pracovník",
+    "totalEarned": "Celkem",
+    "hourlyType": "Hodinový",
+    "worker": "Pracovník",
+    "hours": "Hodiny"
+  },
+  "stats": {
+    "title": "Přehled výkonu",
+    "subtitle": "Získejte přehled o produktivitě celého týmu.",
+    "totalEarnings": "Celkové výdělky",
+    "avgPerEntry": "Průměr na záznam",
+    "taskCompletion": "Dokončené úkoly",
+    "totalEntries": "Počet záznamů",
+    "hoursTracked": "Evidované hodiny",
+    "hourlyEntries": "Hodinové záznamy",
+    "earningsOverTime": "Výdělky v čase",
+    "workerComparison": "Srovnání pracovníků",
+    "projectBreakdown": "Rozložení podle projektů",
+    "noData": "Pro zobrazení statistik přidejte pracovní záznamy."
+  },
+  "analytics": {
+    "title": "Chytré přehledy",
+    "subtitle": "Cíle, trendy a kvalita práce na základě vašich dat.",
+    "overallScore": "Celkové hodnocení",
+    "overallDescription": "Souhrn produktivity, stability a růstu.",
+    "goalsTitle": "Týmové cíle",
+    "goalAchieved": "Cíl splněn!",
+    "remaining": "Zbývá",
+    "insightsTitle": "Doporučení",
+    "noInsights": "Zatím žádná doporučení. Přidávejte další data.",
+    "performanceRadar": "Radar výkonu pracovníků",
+    "correlation": "Vztah hodin a výdělků",
+    "timeDistribution": "Rozložení času",
+    "trend": "Predikce výdělků",
+    "noData": "Pro pokročilé analýzy je potřeba více záznamů."
   },
   "settings": {
-    "title": "Nastavení",
-    "language": "Jazyk",
-    "theme": "Motiv",
-    "notifications": "Oznámení",
-    "dataManagement": "Správa dat",
-    "exportData": "Exportovat data",
-    "importData": "Importovat data",
-    "clearData": "Vymazat data",
-    "czech": "Čeština",
-    "english": "Angličtina"
+    "language": {
+      "title": "Jazyk",
+      "english": "Angličtina",
+      "czech": "Čeština",
+      "info": "Vybraný jazyk se uloží pro vaše další návštěvy."
+    },
+    "workers": {
+      "title": "Pracovníci",
+      "subtitle": "Spravujte údaje o týmu, barvy a hodinové sazby.",
+      "add": "Přidat pracovníka",
+      "empty": "Zatím žádní pracovníci.",
+      "hourlyRate": "Hodinová sazba",
+      "created": "Vytvořeno"
+    },
+    "projects": {
+      "title": "Projekty",
+      "subtitle": "Sledujte solární stavby, lokality a stav.",
+      "add": "Přidat projekt",
+      "empty": "Zatím žádné projekty.",
+      "schedule": "Harmonogram"
+    },
+    "data": {
+      "title": "Správa dat",
+      "subtitle": "Pravidelně zálohujte a v případě potřeby obnovujte data.",
+      "exportJson": "Export JSON",
+      "exportCsv": "Export CSV",
+      "import": "Import dat",
+      "lastBackup": "Poslední záloha",
+      "entries": "Počet záznamů"
+    },
+    "admin": {
+      "title": "Admin konzole",
+      "subtitle": "Pětkrát klepněte na ikonu slunce a odemkněte nástroje zálohování.",
+      "logout": "Odhlásit admina",
+      "login": "Odemknout admina"
+    }
   },
   "admin": {
-    "title": "Administrace",
-    "users": "Uživatelé",
-    "statistics": "Statistiky",
-    "systemInfo": "Systémové informace",
-    "translations": "Překlady",
-    "exportTranslations": "Exportovat překlady",
-    "importTranslations": "Importovat překlady"
+    "title": "Admin konzole",
+    "subtitle": "Spravujte zálohy, kontrolujte stav úložiště a řešte synchronizaci.",
+    "passwordLabel": "Admin heslo",
+    "passwordHint": "Tip: zjistíte ho u vedoucího MST.",
+    "loginButton": "Odemknout",
+    "unlockTitle": "Odemknout admin nástroje",
+    "invalidPassword": "Nesprávné heslo.",
+    "unlocked": "Admin konzole odemčena.",
+    "lockedTitle": "Admin konzole uzamčena",
+    "lockedDescription": "Použijte skryté gesto (5× klik na ikonu slunce) pro odemčení nástrojů.",
+    "loading": "Načítám přehled záloh…",
+    "unavailable": "Admin modul není dostupný.",
+    "loadFailed": "Admin nástroje se nepodařilo načíst.",
+    "loggedOut": "Admin přístup byl odebrán."
   },
   "buttons": {
     "save": "Uložit",
@@ -58,14 +167,5 @@
     "close": "Zavřít",
     "submit": "Odeslat",
     "back": "Zpět"
-  },
-  "messages": {
-    "success": "Operace proběhla úspěšně",
-    "error": "Nastala chyba",
-    "loading": "Načítání...",
-    "noData": "Žádná data k zobrazení",
-    "confirmDelete": "Opravdu chcete smazat tuto položku?",
-    "saved": "Uloženo",
-    "deleted": "Smazáno"
   }
 }

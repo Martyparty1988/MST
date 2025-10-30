@@ -28,6 +28,9 @@ const i18n = {
       
       // Apply translations to the page
       this.applyTranslations();
+
+      // Update language selector state
+      this.updateLanguageSelector();
       
       console.log(`i18n initialized with language: ${this.currentLanguage}`);
     } catch (error) {
@@ -158,6 +161,8 @@ const i18n = {
    */
   applyTranslations() {
     const elements = document.querySelectorAll('[data-i18n]');
+
+    document.documentElement.setAttribute('lang', this.currentLanguage);
     
     elements.forEach(element => {
       const key = element.getAttribute('data-i18n');
