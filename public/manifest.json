@@ -2,20 +2,20 @@
   "name": "MST - Marty Solar Tracker",
   "short_name": "MST",
   "description": "Solar Panel Installation Tracking App",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#21808d",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/icon-192x192.png",
+      "src": "icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512x512.png",
+      "src": "icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -24,6 +24,6 @@
   "categories": ["productivity", "business"],
   "lang": "cs-CZ",
   "dir": "ltr",
-  "scope": "/",
+  "scope": "./",
   "prefer_related_applications": false
 }
