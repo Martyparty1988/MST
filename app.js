@@ -1,418 +1,1159 @@
-// =============================================
-// MST - STORAGE MODULE INTEGRATION
-// =============================================
+// ============================================
+// MST - Marty Solar Tracker
+// Main Application Controller
+// ============================================
 
-// Rewrite persistence from localStorage to IndexedDB (with auto-backup tracking)
-// Override default save/load methods to work with new system
+// =============================
+// Constants & Configuration
+// =============================
+const ADMIN_PASSWORD = 'mst2025';
+const ADMIN_SESSION_STORAGE_KEY = 'mst:adminSession';
+const ADMIN_SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 hours
+const SECRET_CLICK_COUNT = 5;
+const SECRET_CLICK_WINDOW = 3000; // 3 seconds
 
-// Save all state to IndexedDB
-async function saveToIndexedDB() {
-  try {
-    await window.IndexedDBService.saveAllData({
-      workers: appState.workers,
-      projects: appState.projects,
-      workEntries: appState.workEntries
-    });
+const NAVIGATION_PAGES = ['plan', 'records', 'stats', 'analytics', 'settings'];
 
-    // Auto-backup trigger (if available)
-    if (window.BackupService && typeof window.BackupService.trackChange === 'function') {
-      await window.BackupService.trackChange();
+// =============================
+// Global State
+// =============================
+let appState = {
+  workers: [],
+  projects: [],
+  workEntries: []
+};
+
+let currentPage = 'plan';
+let adminSession = null;
+let secretClickCount = 0;
+let secretClickTimer = null;
+
+// =============================
+// Internationalization Helpers
+// =============================
+function translate(key, fallback = '') {
+  if (window.i18n && typeof window.i18n.t === 'function') {
+    const translated = window.i18n.t(key);
+    if (translated && translated !== key) {
+      return translated;
     }
-    console.log('[Storage] Data saved to IndexedDB');
-  } catch (e) {
-    console.error('[Storage] IndexedDB save failed:', e);
-    // fallback to localStorage if needed
+  }
+  return fallback;
+}
+
+function applyTranslations() {
+  if (window.i18n && typeof window.i18n.applyTranslations === 'function') {
+    window.i18n.applyTranslations();
+  }
+  if (window.i18n && typeof window.i18n.updateLanguageSelector === 'function') {
+    window.i18n.updateLanguageSelector();
   }
 }
 
-// Load all state from IndexedDB
-async function loadFromIndexedDB() {
+// =============================
+// Admin Session Handling
+// =============================
+function isAdminSessionActive() {
+  return Boolean(adminSession && adminSession.expiresAt > Date.now());
+}
+
+function persistAdminSession() {
+  if (adminSession) {
+    localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify(adminSession));
+  }
+}
+
+function restoreAdminSession() {
+  try {
+    const saved = localStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (parsed && parsed.expiresAt > Date.now()) {
+      adminSession = parsed;
+    } else {
+      clearAdminSession();
+    }
+  } catch (error) {
+    console.error('[Admin] Failed to restore session:', error);
+    clearAdminSession();
+  }
+}
+
+function clearAdminSession() {
+  adminSession = null;
+  localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+}
+
+function logoutAdmin() {
+  clearAdminSession();
+  window.Toast?.info(
+    translate('admin.loggedOut', 'Admin access removed.'),
+    translate('messages.infoTitle', 'Info')
+  );
+  navigateTo('plan');
+}
+
+// =============================
+// Formatting Helpers
+// =============================
+function formatCurrency(amount) {
+  if (!Number.isFinite(amount)) return '0 CZK';
+  return amount.toLocaleString('cs-CZ', { style: 'currency', currency: 'CZK' });
+}
+
+function formatDateTime(timestamp) {
+  if (!timestamp) return translate('messages.noData', 'N/A');
+  try {
+    return new Date(timestamp).toLocaleString('cs-CZ', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+  } catch (error) {
+    return translate('messages.noData', 'N/A');
+  }
+}
+
+function getProjectById(projectId) {
+  return appState.projects.find(project => project.id === projectId) || null;
+}
+
+function getWorkerById(workerId) {
+  return appState.workers.find(worker => worker.id === workerId) || null;
+}
+
+function calculateTotals() {
+  const totals = {
+    tasks: 0,
+    hourly: 0,
+    hours: 0,
+    earnings: 0
+  };
+
+  appState.workEntries.forEach(entry => {
+    if (entry.type === 'task') {
+      totals.tasks += 1;
+      const workersCount = entry.workers?.length || 0;
+      totals.earnings += (entry.rewardPerWorker || 0) * workersCount;
+    } else {
+      totals.hourly += 1;
+      totals.hours += entry.totalHours || 0;
+      totals.earnings += entry.totalEarned || 0;
+    }
+  });
+
+  return totals;
+}
+
+function getActiveProjects() {
+  return appState.projects.filter(project => project.status !== 'completed');
+}
+
+// =============================
+// Data Loading
+// =============================
+async function loadState() {
   try {
     const data = await window.IndexedDBService.loadAllData();
-    if (data.workers?.length || data.projects?.length || data.workEntries?.length) {
-      appState.workers = data.workers || [];
-      appState.projects = data.projects || [];
-      appState.workEntries = data.workEntries || [];
-      console.log('[Storage] Data loaded from IndexedDB');
-      return true;
-    }
-    return false;
-  } catch (e) {
-    console.error('[Storage] IndexedDB load failed:', e);
-    return false;
+    appState.workers = Array.isArray(data.workers) ? data.workers : [];
+    appState.projects = Array.isArray(data.projects) ? data.projects : [];
+    appState.workEntries = Array.isArray(data.workEntries) ? data.workEntries : [];
+  } catch (error) {
+    console.error('[App] Failed to load state:', error);
+    window.Toast?.error(
+      translate('messages.dataLoadFailed', 'Unable to load stored data.'),
+      translate('messages.errorTitle', 'Error')
+    );
   }
 }
-/*
-MST - Marty Solar Tracker
-Refactor: IndexedDB persistent storage + multilayer backup strategy
-*/
+
 // =============================
-// Constants & Utilities
+// Navigation & Routing
 // =============================
-const SCHEMA_VERSION = 1;
-const DB_NAME = 'mst';
-const STORE_RECORDS = 'records';
-const STORE_META = 'meta';
-const LS_MIGRATED = 'mst:migrated';
-const LS_ADMIN_SESSION = 'mst:adminSession';
-const LS_AUTO_INDEX = 'mst:autoBackup:index';
-const AUTO_SLOTS = 5;
-const AUTO_SLOT_KEY = (i) => `mst:autoBackup:slot:${i}`;
-const ADMIN_SECRET = 'mst2025';
-const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8h
-const AUTO_BACKUP_CHANGE_THRESHOLD = 25;
-const AUTO_BACKUP_TIME_MS = 60 * 1000;
-const FS_DEBOUNCE_MS = 30 * 1000;
-const nowIso = () => new Date().toISOString();
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-function uid(prefix='id') {
-  return `${prefix}_${Math.random().toString(36).slice(2,10)}_${Date.now()}`;
-}
-function downloadBlob(name, blob) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}
-function toCSV(rows, headers) {
-  const esc = (v) => {
-    if (v == null) return '';
-    const s = String(v).replaceAll('"', '""');
-    if (/[",\n]/.test(s)) return `"${s}"`;
-    return s;
-  };
-  return [headers.join(',')].concat(rows.map(r => headers.map(h => esc(r[h])).join(','))).join('\n');
-}
-// =============================
-// State
-// =============================
-let appState = { workers: [], projects: [], workEntries: [] };
-let adminSession = null; // { token, createdAt }
-let clickCount = 0;
-let clickTimestamps = [];
-let currentPage = 'plan';
-let changeCounter = 0;
-let lastAutoBackupAt = 0;
-let fsAccessHandle = null; // File System Access API file handle (not persisted)
-let fsDebounceTimer = null;
-// =============================
-// IndexedDB layer
-// =============================
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, SCHEMA_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_RECORDS)) {
-        db.createObjectStore(STORE_RECORDS, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(STORE_META)) {
-        db.createObjectStore(STORE_META, { keyPath: 'key' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function idbGetAllRecords() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_RECORDS, 'readonly');
-    const store = tx.objectStore(STORE_RECORDS);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function idbPutRecords(records) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_RECORDS, 'readwrite');
-    const store = tx.objectStore(STORE_RECORDS);
-    records.forEach(r => store.put(r));
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function idbBulkReplace(records) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_RECORDS, 'readwrite');
-    const store = tx.objectStore(STORE_RECORDS);
-    const clearReq = store.clear();
-    clearReq.onsuccess = () => {
-      records.forEach(r => store.add(r));
-    };
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function idbGetMeta(key) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_META, 'readonly');
-    const store = tx.objectStore(STORE_META);
-    const req = store.get(key);
-    req.onsuccess = () => resolve(req.result?.value);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function idbSetMeta(key, value) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_META, 'readwrite');
-    const store = tx.objectStore(STORE_META);
-    store.put({ key, value });
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-// =============================
-// Migration from localStorage
-// =============================
-async function maybeMigrateFromLocalStorage() {
-  if (localStorage.getItem(LS_MIGRATED)) return;
-  const rawWorkers = localStorage.getItem('mst:workers');
-  const rawProjects = localStorage.getItem('mst:projects');
-  const rawEntries = localStorage.getItem('mst:workEntries');
-  let workers = []; let projects = []; let entries = [];
-  try { workers = rawWorkers ? JSON.parse(rawWorkers) : []; } catch {}
-  try { projects = rawProjects ? JSON.parse(rawProjects) : []; } catch {}
-  try { entries = rawEntries ? JSON.parse(rawEntries) : []; } catch {}
-  const byId = new Map();
-  [...workers, ...projects, ...entries].forEach(item => {
-    if (!item || !item.id) return;
-    const prev = byId.get(item.id);
-    if (!prev || (item.updatedAt && prev?.updatedAt && item.updatedAt > prev.updatedAt)) {
-      byId.set(item.id, item);
-    }
-  });
-  await idbPutRecords(Array.from(byId.values()));
-  localStorage.setItem(LS_MIGRATED, '1');
-}
-// =============================
-// Load/Save state with LWW
-// =============================
-async function loadStateFromDB() {
-  const records = await idbGetAllRecords();
-  appState = { workers: [], projects: [], workEntries: [] };
-  for (const r of records) {
-    if (r.type === 'worker') appState.workers.push(r);
-    else if (r.type === 'project') appState.projects.push(r);
-    else if (r.type === 'entry') appState.workEntries.push(r);
-  }
-}
-async function saveRecordsLWW(items) {
-  await idbPutRecords(items);
-  await idbSetMeta('lastBackupAt', Date.now());
-  changeCounter += items.length;
-  scheduleAutoBackups();
-}
-// =============================
-// Auto backups: LocalStorage ring buffer
-// =============================
-function getAutoIndex() {
-  const raw = localStorage.getItem(LS_AUTO_INDEX);
-  if (raw) {
-    try { return JSON.parse(raw); } catch {}
-  }
-  return { currentSlot: 0, lastBackupAt: 0, metadata: {} };
-}
-function setAutoIndex(idx) {
-  localStorage.setItem(LS_AUTO_INDEX, JSON.stringify(idx));
-}
-function serializeBackupBlob() {
-  const payload = {
-    version: 1,
-    schemaVersion: SCHEMA_VERSION,
-    createdAt: nowIso(),
-    workers: appState.workers,
-    projects: appState.projects,
-    entries: appState.workEntries,
-    meta: { lastBackupAt: Date.now(), lastVacuumAt: null },
-  };
-  return JSON.stringify(payload);
-}
-function doLocalStorageAutoBackup() {
-  const idx = getAutoIndex();
-  const next = (idx.currentSlot + 1) % AUTO_SLOTS;
-  const data = serializeBackupBlob();
-  localStorage.setItem(AUTO_SLOT_KEY(next), data);
-  const size = new Blob([data]).size;
-  const info = { size, savedAt: nowIso() };
-  const metadata = { ...idx.metadata, [next]: info };
-  const updated = { currentSlot: next, lastBackupAt: Date.now(), metadata };
-  setAutoIndex(updated);
-}
-// =============================
-// Auto backups: OPFS
-// =============================
-async function getOPFSRoot() {
-  if (!('storage' in navigator) || !navigator.storage.getDirectory) return null;
-  try { return await navigator.storage.getDirectory(); } catch { return null; }
-}
-async function ensureOPFSBackupsDir() {
-  const root = await getOPFSRoot();
-  if (!root) return null;
-  try { return await root.getDirectoryHandle('backups', { create: true }); } catch { return null; }
-}
-function opfsFilename(date = new Date()) {
-  const y = date.toISOString().slice(0,10);
-  return `mst-auto-${y}.json`;
-}
-async function listOPFSBackups() {
-  const dir = await ensureOPFSBackupsDir();
-  if (!dir) return [];
-  const files = [];
-  for await (const [name, handle] of dir.entries()) {
-    if (name.endsWith('.json')) files.push({ name, handle });
-  }
-  return files;
-}
-async function writeOPFSBackup() {
-  const dir = await ensureOPFSBackupsDir();
-  if (!dir) return;
-  const name = opfsFilename(new Date());
-  const handle = await dir.getFileHandle(name, { create: true });
-  const writable = await handle.createWritable();
-  const data = serializeBackupBlob();
-  await writable.write(new Blob([data], { type: 'application/json' }));
-  await writable.close();
-  await enforceOPFSRetention(dir);
-}
-async function enforceOPFSRetention(dir) {
-  const entries = await listOPFSBackups();
-  const now = Date.now();
-  // Delete older than 30 days
-  for (const e of entries) {
-    try {
-      const file = await e.handle.getFile();
-      if (now - file.lastModified > 30*24*60*60*1000) {
-        await dir.removeEntry(e.name);
-      }
-    } catch {}
-  }
-  // Retain last 7 by name
-  entries.sort((a,b)=> a.name.localeCompare(b.name));
-  const toDelete = entries.slice(0, Math.max(0, entries.length - 7));
-  for (const e of toDelete) {
-    try { await dir.removeEntry(e.name); } catch {}
-  }
-}
-// =============================
-// Auto backups: File System Access API (optional)
-// =============================
-function hasFSAccess() {
-  return 'showSaveFilePicker' in window;
-}
-async function activateFSAccess() {
-  if (!hasFSAccess()) return null;
-  try {
-    fsAccessHandle = await window.showSaveFilePicker({
-      suggestedName: 'mst-auto-backup.json',
-      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
-    });
-    scheduleFSWrite();
-    return true;
-  } catch { return null; }
-}
-function deactivateFSAccess() {
-  fsAccessHandle = null;
-  if (fsDebounceTimer) { clearTimeout(fsDebounceTimer); fsDebounceTimer = null; }
-}
-function scheduleFSWrite() {
-  if (!fsAccessHandle) return;
-  if (fsDebounceTimer) clearTimeout(fsDebounceTimer);
-  fsDebounceTimer = setTimeout(writeFSAccessBackup, FS_DEBOUNCE_MS);
-}
-async function writeFSAccessBackup() {
-  if (!fsAccessHandle) return;
-  try {
-    const writable = await fsAccessHandle.createWritable();
-    const data = serializeBackupBlob();
-    await writable.write(data);
-    await writable.close();
-  } catch {}
-}
-// =============================
-// Service Worker Sync (best-effort)
-// =============================
-async function tryRegisterSync() {
-  if (!('serviceWorker' in navigator)) return;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    if ('periodicSync' in reg) {
-      try { await reg.periodicSync.register('mst-auto-backup', { minInterval: 24*60*60*1000 }); } catch {}
-    }
-    if ('sync' in reg) {
-      try { await reg.sync.register('mst-backup-sync'); } catch {}
-    }
-  } catch {}
-}
-// =============================
-// Auto-backup scheduler
-// =============================
-function scheduleAutoBackups() {
-  const now = Date.now();
-  if (changeCounter >= AUTO_BACKUP_CHANGE_THRESHOLD || now - lastAutoBackupAt >= AUTO_BACKUP_TIME_MS) {
-    doLocalStorageAutoBackup();
-    writeOPFSBackup();
-    scheduleFSWrite();
-    lastAutoBackupAt = now;
-    changeCounter = 0;
-  }
-}
-// =============================
-// Export / Import
-// =============================
-function exportJSON() {
-  const name = `mst-backup-${new Date().toISOString().replace(/[:]/g,'-').slice(0,19)}.json`;
-  const blob = new Blob([serializeBackupBlob()], { type: 'application/json;charset=utf-8' });
-  downloadBlob(name, blob);
-}
-function exportCSV() {
-  const headers = ['ID','Type','Date','Time','Project','Worker/Workers','Table Number','Hours','Reward Per Worker','Total Amount'];
-  const rows = appState.workEntries.map(e => ({
-    'ID': e.id,
-    'Type': e.entryType || '',
-    'Date': e.date || '',
-    'Time': e.time || '',
-    'Project': e.projectId || '',
-    'Worker/Workers': Array.isArray(e.workerIds) ? e.workerIds.join(' | ') : (e.workerId || ''),
-    'Table Number': e.tableNumber || '',
-    'Hours': e.hours || 0,
-    'Reward Per Worker': e.rewardPerWorker || 0,
-    'Total Amount': e.totalAmount || 0,
-  }));
-  const csv = toCSV(rows, headers);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const name = `mst-entries-${new Date().toISOString().slice(0,10)}.csv`;
-  downloadBlob(name, blob);
-}
-async function importJSONFile(file, { mode = 'soft' } = {}) {
-  const text = await file.text();
-  const parsed = JSON.parse(text);
-  // Validate
-  if (!parsed || parsed.version == null || parsed.schemaVersion == null ||
-      !Array.isArray(parsed.workers) || !Array.isArray(parsed.projects) || !Array.isArray(parsed.entries)) {
-    throw new Error('Invalid backup format');
-  }
-  // Apply import based on mode
-  if (mode === 'hard') {
-    // Hard mode: replace everything
-    appState.workers = parsed.workers || [];
-    appState.projects = parsed.projects || [];
-    appState.workEntries = parsed.entries || [];
-    const allRecords = [...appState.workers, ...appState.projects, ...appState.workEntries];
-    await idbBulkReplace(allRecords);
-  } else {
-    // Soft mode: merge with LWW
-    const incoming = [...(parsed.workers || []), ...(parsed.projects || []), ...(parsed.entries || [])];
-    await saveRecordsLWW(incoming);
-    await loadStateFromDB();
-  }
-  changeCounter = 0;
-  lastAutoBackupAt = Date.now();
+function navigateTo(page) {
+  currentPage = page;
   render();
+}
+
+function setupNavigation() {
+  const navItems = document.querySelectorAll('.bottom-nav .nav-item');
+  navItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const page = item.dataset.page;
+      if (!page) return;
+      currentPage = page;
+      render();
+    });
+  });
+}
+
+function updateNavigationState() {
+  const navItems = document.querySelectorAll('.bottom-nav .nav-item');
+  navItems.forEach(item => {
+    const page = item.dataset.page;
+    if (!page) return;
+    if (page === currentPage) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+}
+
+function updatePageTitle() {
+  const titleElement = document.getElementById('pageTitle');
+  if (!titleElement) return;
+
+  const translationKey = `navigation.${currentPage}`;
+  const fallback = {
+    plan: 'Plan',
+    records: 'Records',
+    stats: 'Stats',
+    analytics: 'Analytics',
+    settings: 'Settings',
+    admin: 'Admin'
+  }[currentPage] || 'MST';
+
+  titleElement.setAttribute('data-i18n', translationKey);
+  titleElement.textContent = translate(translationKey, fallback);
+}
+
+// =============================
+// Secret Admin Access
+// =============================
+function setupSecretAccess() {
+  const secretButton = document.getElementById('secretAdminButton');
+  if (!secretButton) return;
+
+  secretButton.addEventListener('click', () => {
+    secretClickCount += 1;
+
+    if (secretClickTimer) {
+      clearTimeout(secretClickTimer);
+    }
+
+    secretClickTimer = setTimeout(() => {
+      secretClickCount = 0;
+    }, SECRET_CLICK_WINDOW);
+
+    if (secretClickCount >= SECRET_CLICK_COUNT) {
+      secretClickCount = 0;
+      openAdminLoginModal();
+    }
+  });
+}
+
+function openAdminLoginModal() {
+  const body = `
+    <form id="adminLoginForm" class="form-stack">
+      <div class="form-group">
+        <label class="form-label" for="adminPassword" data-i18n="admin.passwordLabel">Admin password</label>
+        <input type="password" class="form-control" id="adminPassword" autocomplete="current-password" required>
+      </div>
+      <p class="form-helper" data-i18n="admin.passwordHint">Hint: ask the MST lead.</p>
+    </form>
+  `;
+
+  const footer = `
+    <button class="btn btn-secondary" onclick="closeModal()" data-i18n="buttons.cancel">Cancel</button>
+    <button class="btn btn-primary" onclick="window.submitAdminLogin()" data-i18n="admin.loginButton">Unlock</button>
+  `;
+
+  openModal(
+    translate('admin.unlockTitle', 'Unlock admin tools'),
+    body,
+    footer
+  );
+  applyTranslations();
+}
+
+async function submitAdminLogin() {
+  const passwordInput = document.getElementById('adminPassword');
+  const password = passwordInput?.value || '';
+
+  if (password !== ADMIN_PASSWORD) {
+    window.Toast?.error(
+      translate('admin.invalidPassword', 'Incorrect password.'),
+      translate('messages.errorTitle', 'Error')
+    );
+    return;
+  }
+
+  adminSession = {
+    token: `admin_${Date.now()}`,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + ADMIN_SESSION_DURATION
+  };
+  persistAdminSession();
+  closeModal();
+  window.Toast?.success(
+    translate('admin.unlocked', 'Admin dashboard unlocked.'),
+    translate('messages.successTitle', 'Success')
+  );
+  navigateTo('admin');
+}
+
+// =============================
+// Plan Page Rendering
+// =============================
+function renderPlanPage() {
+  const container = document.getElementById('mainContent');
+  if (!container) return;
+
+  const activeProjects = getActiveProjects();
+
+  container.innerHTML = `
+    <div class="page plan-page">
+      <section class="page-section plan-hero">
+        <div class="section-header">
+          <h2 class="section-title" data-i18n="plan.heroTitle">Installation plans & documentation</h2>
+          <p class="section-subtitle" data-i18n="plan.heroSubtitle">
+            Keep the latest layout drawings at hand, annotate tasks and share updates with your crew.
+          </p>
+        </div>
+        <div class="plan-actions">
+          <label class="btn btn-primary">
+            <input type="file" id="planFileInput" accept="application/pdf" hidden>
+            <span data-i18n="plan.uploadLabel">Upload installation plan (PDF)</span>
+          </label>
+          <button class="btn btn-secondary" id="planRefreshStored" data-i18n="plan.refreshStored">Refresh stored plans</button>
+          <button class="btn btn-secondary" id="planClearViewer" data-i18n="plan.clearViewer">Clear viewer</button>
+        </div>
+      </section>
+
+      <section class="page-section plan-viewer">
+        <div class="viewer-toolbar">
+          <div class="toolbar-group">
+            <button id="prev-page" class="btn-icon" title="Previous page">⟨</button>
+            <span id="page-info" class="toolbar-label">Page 0 of 0</span>
+            <button id="next-page" class="btn-icon" title="Next page">⟩</button>
+            <label class="toolbar-input">
+              <span data-i18n="plan.goToLabel">Go to</span>
+              <input type="number" id="page-input" min="1" value="1">
+            </label>
+          </div>
+          <div class="toolbar-group">
+            <button id="zoom-out" class="btn-icon" title="Zoom out">-</button>
+            <span id="zoom-level" class="toolbar-label">100%</span>
+            <button id="zoom-in" class="btn-icon" title="Zoom in">+</button>
+            <button id="zoom-reset" class="btn-icon" title="Reset zoom">↺</button>
+          </div>
+          <div class="toolbar-group">
+            <button id="rotate-left" class="btn-icon" title="Rotate left">⟲</button>
+            <button id="rotate-right" class="btn-icon" title="Rotate right">⟳</button>
+            <button id="fullscreen-toggle" class="btn-icon" title="Fullscreen">⛶</button>
+          </div>
+        </div>
+        <div id="pdf-viewer-container" class="pdf-viewer">
+          <canvas id="pdf-canvas"></canvas>
+        </div>
+        <div class="stored-plans">
+          <h3 class="section-title" data-i18n="plan.storedTitle">Stored PDFs</h3>
+          <p class="section-subtitle" data-i18n="plan.storedSubtitle">
+            Plans are saved in your browser for offline access.
+          </p>
+          <div id="storedPlansList" class="stored-plans-list"></div>
+        </div>
+      </section>
+
+      <section class="page-section plan-projects">
+        <h3 class="section-title" data-i18n="plan.projectsTitle">Active projects</h3>
+        <div class="projects-grid">
+          ${activeProjects.length === 0
+            ? `<div class="empty-state" data-i18n="plan.noProjects">No active projects yet. Add one in Settings.</div>`
+            : activeProjects.map(project => `
+                <article class="project-card">
+                  <header class="project-card-header">
+                    <h4 class="project-card-title">${project.name}</h4>
+                    <span class="project-status status-${project.status || 'active'}">${project.status || 'active'}</span>
+                  </header>
+                  <dl class="project-card-meta">
+                    <div>
+                      <dt data-i18n="plan.location">Location</dt>
+                      <dd>${project.location || translate('messages.noData', 'N/A')}</dd>
+                    </div>
+                    <div>
+                      <dt data-i18n="plan.schedule">Schedule</dt>
+                      <dd>${project.startDate ? new Date(project.startDate).toLocaleDateString('cs-CZ') : '—'}
+                        ${project.endDate ? `→ ${new Date(project.endDate).toLocaleDateString('cs-CZ')}` : ''}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              `).join('')}
+        </div>
+      </section>
+    </div>
+  `;
+
+  attachPlanPageEvents();
+  applyTranslations();
+}
+
+function attachPlanPageEvents() {
+  if (!window.PDFViewer) {
+    console.warn('[Plan] PDFViewer module not available.');
+    return;
+  }
+
+  const fileInput = document.getElementById('planFileInput');
+  const refreshButton = document.getElementById('planRefreshStored');
+  const clearButton = document.getElementById('planClearViewer');
+
+  fileInput?.addEventListener('change', event => {
+    const file = event.target.files?.[0];
+    if (file) {
+      window.PDFViewer.loadPdfFromFile(file).then(() => populateStoredPlans());
+    }
+  });
+
+  refreshButton?.addEventListener('click', populateStoredPlans);
+  clearButton?.addEventListener('click', () => window.PDFViewer.clearPdf());
+
+  document.getElementById('prev-page')?.addEventListener('click', () => window.PDFViewer.prevPage());
+  document.getElementById('next-page')?.addEventListener('click', () => window.PDFViewer.nextPage());
+  document.getElementById('zoom-in')?.addEventListener('click', () => window.PDFViewer.zoomIn());
+  document.getElementById('zoom-out')?.addEventListener('click', () => window.PDFViewer.zoomOut());
+  document.getElementById('zoom-reset')?.addEventListener('click', () => window.PDFViewer.zoomReset());
+  document.getElementById('rotate-left')?.addEventListener('click', () => window.PDFViewer.rotateCounterClockwise());
+  document.getElementById('rotate-right')?.addEventListener('click', () => window.PDFViewer.rotateClockwise());
+  document.getElementById('fullscreen-toggle')?.addEventListener('click', () => window.PDFViewer.toggleFullScreen());
+  document.getElementById('page-input')?.addEventListener('change', event => {
+    window.PDFViewer.goToPage(event.target.value);
+  });
+
+  populateStoredPlans();
+}
+
+async function populateStoredPlans() {
+  const listContainer = document.getElementById('storedPlansList');
+  if (!listContainer || !window.PDFViewer) return;
+
+  listContainer.innerHTML = `<div class="loading" data-i18n="plan.loadingPlans">Loading stored plans…</div>`;
+  applyTranslations();
+
+  try {
+    const stored = await window.PDFViewer.getStoredPdfs();
+
+    if (!stored || stored.length === 0) {
+      listContainer.innerHTML = `<div class="empty-state" data-i18n="plan.noStored">No stored PDFs yet.</div>`;
+      applyTranslations();
+      return;
+    }
+
+    listContainer.innerHTML = stored
+      .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
+      .map(item => `
+        <div class="stored-plan-item">
+          <div class="stored-plan-meta">
+            <h4 class="stored-plan-title">${item.filename}</h4>
+            <p class="stored-plan-details">
+              ${new Date(item.uploadedAt).toLocaleString('cs-CZ')} • ${window.PDFViewer.formatFileSize(item.size || 0)}
+            </p>
+          </div>
+          <div class="stored-plan-actions">
+            <button class="btn-small" data-action="open" data-plan-id="${item.id}" data-i18n="plan.open">Open</button>
+            <button class="btn-small btn-danger" data-action="delete" data-plan-id="${item.id}" data-i18n="plan.delete">Delete</button>
+          </div>
+        </div>
+      `)
+      .join('');
+
+    listContainer.querySelectorAll('button[data-action="open"]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const planId = Number(button.dataset.planId);
+        const plan = stored.find(item => item.id === planId);
+        if (!plan) return;
+        await window.PDFViewer.loadPdfFromData(plan.data, plan.filename);
+      });
+    });
+
+    listContainer.querySelectorAll('button[data-action="delete"]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const planId = Number(button.dataset.planId);
+        await window.PDFViewer.deletePdf(planId);
+        populateStoredPlans();
+      });
+    });
+
+    applyTranslations();
+  } catch (error) {
+    console.error('[Plan] Failed to load stored PDFs:', error);
+    listContainer.innerHTML = `<div class="empty-state" data-i18n="plan.loadFailed">Unable to load stored plans.</div>`;
+    applyTranslations();
+  }
+}
+
+// =============================
+// Records Page Rendering
+// =============================
+function renderRecordsPage() {
+  const container = document.getElementById('mainContent');
+  if (!container) return;
+
+  const totals = calculateTotals();
+  const hasData = appState.workEntries.length > 0;
+
+  container.innerHTML = `
+    <div class="page records-page">
+      <section class="page-section records-overview">
+        <div class="records-header">
+          <div>
+            <h2 class="section-title" data-i18n="records.title">Work records</h2>
+            <p class="section-subtitle" data-i18n="records.subtitle">Track daily installation progress and hourly work.</p>
+          </div>
+          <button class="btn btn-primary" onclick="showAddRecordModal()" data-i18n="records.addButton">Add record</button>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="records.statEarnings">Total earnings</span>
+            <span class="stat-value">${formatCurrency(totals.earnings)}</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="records.statTasks">Task completions</span>
+            <span class="stat-value">${totals.tasks}</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="records.statHours">Hourly work</span>
+            <span class="stat-value">${totals.hours.toFixed(1)} h</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section records-filters">
+        <div class="filter-group">
+          <label class="filter-control">
+            <span data-i18n="records.filterProject">Project</span>
+            <select id="filterProject" class="form-control">
+              <option value="" data-i18n="records.filterAllProjects">All projects</option>
+              ${appState.projects.map(project => `<option value="${project.id}">${project.name}</option>`).join('')}
+            </select>
+          </label>
+          <label class="filter-control">
+            <span data-i18n="records.filterType">Type</span>
+            <select id="filterType" class="form-control">
+              <option value="" data-i18n="records.filterAllTypes">All types</option>
+              <option value="task" data-i18n="records.filterTasks">Task entries</option>
+              <option value="hourly" data-i18n="records.filterHourly">Hourly entries</option>
+            </select>
+          </label>
+          <button class="btn btn-secondary" onclick="window.filterRecords()" data-i18n="records.applyFilters">Apply filters</button>
+        </div>
+      </section>
+
+      <section class="page-section records-list" id="recordsListSection">
+        ${hasData
+          ? '<div id="recordsList" class="records-grid"></div>'
+          : `<div class="empty-state" data-i18n="records.empty">No records yet. Add your first record to start tracking.</div>`}
+      </section>
+    </div>
+  `;
+
+  if (hasData) {
+    renderRecordsList();
+    document.getElementById('filterProject')?.addEventListener('change', window.filterRecords);
+    document.getElementById('filterType')?.addEventListener('change', window.filterRecords);
+  }
+
+  applyTranslations();
+}
+
+function renderRecordsList() {
+  const recordsList = document.getElementById('recordsList');
+  if (!recordsList) return;
+
+  const sorted = [...appState.workEntries].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  recordsList.innerHTML = sorted.map(entry => renderRecordCard(entry)).join('');
+}
+
+function renderRecordCard(entry) {
+  const project = getProjectById(entry.projectId);
+  const projectName = project ? project.name : translate('records.unknownProject', 'Unknown project');
+  const timestamp = formatDateTime(entry.timestamp);
+
+  if (entry.type === 'task') {
+    const workers = (entry.workers || []).map(workerRef => {
+      const worker = getWorkerById(workerRef.workerId);
+      return worker ? `${worker.name} (${worker.workerCode})` : workerRef.workerCode;
+    }).join(', ');
+    const totalReward = (entry.rewardPerWorker || 0) * (entry.workers?.length || 0);
+
+    return `
+      <article class="record-card record-card-task">
+        <header class="record-card-header">
+          <span class="record-type">${translate('records.taskType', 'Task')}</span>
+          <time class="record-time">${timestamp}</time>
+        </header>
+        <div class="record-body">
+          <h4 class="record-title">${projectName}</h4>
+          <dl class="record-details">
+            <div>
+              <dt data-i18n="records.table">Table</dt>
+              <dd>${entry.tableNumber || '—'}</dd>
+            </div>
+            <div>
+              <dt data-i18n="records.workers">Workers</dt>
+              <dd>${workers || translate('records.noWorkers', 'No workers assigned')}</dd>
+            </div>
+            <div>
+              <dt data-i18n="records.rewardPerWorker">Reward / worker</dt>
+              <dd>${formatCurrency(entry.rewardPerWorker || 0)}</dd>
+            </div>
+            <div>
+              <dt data-i18n="records.totalEarned">Total</dt>
+              <dd>${formatCurrency(totalReward)}</dd>
+            </div>
+          </dl>
+        </div>
+        <footer class="record-actions">
+          <button class="btn-small btn-danger" onclick="deleteRecord('${entry.id}')" data-i18n="buttons.delete">Delete</button>
+        </footer>
+      </article>
+    `;
+  }
+
+  const worker = getWorkerById(entry.workerId);
+  return `
+    <article class="record-card record-card-hourly">
+      <header class="record-card-header">
+        <span class="record-type">${translate('records.hourlyType', 'Hourly')}</span>
+        <time class="record-time">${timestamp}</time>
+      </header>
+      <div class="record-body">
+        <h4 class="record-title">${projectName}</h4>
+        <dl class="record-details">
+          <div>
+            <dt data-i18n="records.worker">Worker</dt>
+            <dd>${worker ? `${worker.name} (${worker.workerCode})` : translate('records.noWorkers', 'No workers assigned')}</dd>
+          </div>
+          <div>
+            <dt data-i18n="records.hours">Hours</dt>
+            <dd>${(entry.totalHours || 0).toFixed(2)} h</dd>
+          </div>
+          <div>
+            <dt data-i18n="records.totalEarned">Total</dt>
+            <dd>${formatCurrency(entry.totalEarned || 0)}</dd>
+          </div>
+        </dl>
+      </div>
+      <footer class="record-actions">
+        <button class="btn-small btn-danger" onclick="deleteRecord('${entry.id}')" data-i18n="buttons.delete">Delete</button>
+      </footer>
+    </article>
+  `;
+}
+
+// Expose for CRUD module
+window.renderRecordCard = renderRecordCard;
+
+// =============================
+// Stats Page Rendering
+// =============================
+function renderStatsPage() {
+  const container = document.getElementById('mainContent');
+  if (!container) return;
+
+  const totals = calculateTotals();
+  const hasData = appState.workEntries.length > 0;
+
+  const averageEarnings = appState.workEntries.length > 0
+    ? totals.earnings / appState.workEntries.length
+    : 0;
+
+  container.innerHTML = `
+    <div class="page stats-page">
+      <section class="page-section">
+        <div class="section-header">
+          <h2 class="section-title" data-i18n="stats.title">Performance overview</h2>
+          <p class="section-subtitle" data-i18n="stats.subtitle">Understand productivity trends across the crew.</p>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="stats.totalEarnings">Total earnings</span>
+            <span class="stat-value">${formatCurrency(totals.earnings)}</span>
+            <span class="stat-footnote" data-i18n="stats.avgPerEntry">${formatCurrency(averageEarnings)} avg / entry</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="stats.taskCompletion">Task completions</span>
+            <span class="stat-value">${totals.tasks}</span>
+            <span class="stat-footnote" data-i18n="stats.totalEntries">${appState.workEntries.length} entries</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label" data-i18n="stats.hoursTracked">Tracked hours</span>
+            <span class="stat-value">${totals.hours.toFixed(1)} h</span>
+            <span class="stat-footnote" data-i18n="stats.hourlyEntries">${totals.hourly} hourly entries</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section charts-section">
+        ${hasData
+          ? `
+            <div class="chart-grid">
+              <div class="chart-card">
+                <h3 class="chart-title" data-i18n="stats.earningsOverTime">Earnings over time</h3>
+                <canvas id="earningsChart" height="260"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 class="chart-title" data-i18n="stats.workerComparison">Worker comparison</h3>
+                <canvas id="workerComparisonChart" height="260"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 class="chart-title" data-i18n="stats.projectBreakdown">Project breakdown</h3>
+                <canvas id="projectBreakdownChart" height="260"></canvas>
+              </div>
+            </div>
+          `
+          : `<div class="empty-state" data-i18n="stats.noData">Add work records to unlock analytics.</div>`}
+      </section>
+    </div>
+  `;
+
+  if (window.Charts && typeof window.Charts.destroyAllCharts === 'function') {
+    window.Charts.destroyAllCharts();
+  }
+
+  if (hasData && window.Charts && typeof window.Charts.initializeStatsCharts === 'function') {
+    window.Charts.initializeStatsCharts(appState);
+  }
+
+  applyTranslations();
+}
+
+// =============================
+// Analytics Page Rendering
+// =============================
+function renderAnalyticsPage() {
+  const container = document.getElementById('mainContent');
+  if (!container) return;
+
+  const hasData = appState.workEntries.length > 0;
+  const goals = window.Analytics.getGoalsWithProgress(appState.workEntries);
+  const metrics = window.Analytics.calculatePerformanceMetrics(appState);
+  const insights = window.Analytics.getPerformanceInsights(metrics);
+
+  container.innerHTML = `
+    <div class="page analytics-page">
+      <section class="page-section">
+        <div class="section-header">
+          <h2 class="section-title" data-i18n="analytics.title">Smart insights</h2>
+          <p class="section-subtitle" data-i18n="analytics.subtitle">Goals, trends and quality metrics powered by your data.</p>
+        </div>
+        <div class="analytics-score">
+          <div class="score-ring" aria-label="Overall performance score">
+            <span class="score-value">${Math.round(metrics.overallScore)}</span>
+          </div>
+          <div class="score-text">
+            <h3 data-i18n="analytics.overallScore">Overall score</h3>
+            <p data-i18n="analytics.overallDescription">Composite of productivity, consistency and growth indicators.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section goals-section">
+        <h3 class="section-title" data-i18n="analytics.goalsTitle">Team goals</h3>
+        <div class="goals-grid">
+          ${goals.map(goal => {
+            const progress = goal.progress;
+            const percentage = Math.min(100, Math.round(progress.percentage));
+            return `
+              <article class="goal-card ${progress.achieved ? 'goal-achieved' : ''}">
+                <header class="goal-card-header">
+                  <span class="goal-icon">${goal.icon || '🎯'}</span>
+                  <div>
+                    <h4 class="goal-title">${goal.name || goal.id}</h4>
+                    <p class="goal-period">${goal.period}</p>
+                  </div>
+                </header>
+                <div class="goal-progress">
+                  <div class="goal-progress-bar">
+                    <span style="width: ${percentage}%"></span>
+                  </div>
+                  <div class="goal-progress-values">
+                    <span>${progress.current.toLocaleString('cs-CZ')}</span>
+                    <span>/ ${progress.target.toLocaleString('cs-CZ')}</span>
+                  </div>
+                </div>
+                <p class="goal-status">
+                  ${progress.achieved
+                    ? translate('analytics.goalAchieved', 'Goal achieved!')
+                    : `${translate('analytics.remaining', 'Remaining')}: ${progress.remaining.toLocaleString('cs-CZ')}`}
+                </p>
+              </article>
+            `;
+          }).join('')}
+        </div>
+      </section>
+
+      <section class="page-section insights-section">
+        <h3 class="section-title" data-i18n="analytics.insightsTitle">Performance insights</h3>
+        ${insights.length === 0
+          ? `<div class="empty-state" data-i18n="analytics.noInsights">No insights yet. Keep adding data.</div>`
+          : `<div class="insights-grid">
+              ${insights.map(insight => `
+                <article class="insight-card insight-${insight.type}">
+                  <div class="insight-icon">${insight.icon}</div>
+                  <div class="insight-body">
+                    <h4 class="insight-title">${insight.title}</h4>
+                    <p class="insight-text">${insight.message}</p>
+                  </div>
+                </article>
+              `).join('')}
+            </div>`}
+      </section>
+
+      <section class="page-section charts-section">
+        ${hasData
+          ? `
+            <div class="chart-grid">
+              <div class="chart-card">
+                <h3 class="chart-title" data-i18n="analytics.performanceRadar">Worker performance radar</h3>
+                <canvas id="performanceRadar" height="260"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 class="chart-title" data-i18n="analytics.correlation">Hours vs earnings</h3>
+                <canvas id="correlationScatter" height="260"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 class="chart-title" data-i18n="analytics.timeDistribution">Time distribution</h3>
+                <canvas id="timeStacked" height="260"></canvas>
+              </div>
+              <div class="chart-card">
+                <h3 class="chart-title" data-i18n="analytics.trend">Earnings forecast</h3>
+                <canvas id="trendPrediction" height="260"></canvas>
+              </div>
+            </div>
+          `
+          : `<div class="empty-state" data-i18n="analytics.noData">Add more records to generate advanced analytics.</div>`}
+      </section>
+    </div>
+  `;
+
+  if (window.AdvancedCharts && typeof window.AdvancedCharts.destroyAdvancedCharts === 'function') {
+    window.AdvancedCharts.destroyAdvancedCharts();
+  }
+
+  if (hasData && window.AdvancedCharts) {
+    window.AdvancedCharts.createPerformanceRadarChart('performanceRadar', appState.workEntries, appState.workers);
+    window.AdvancedCharts.createCorrelationScatterChart('correlationScatter', appState.workEntries);
+    window.AdvancedCharts.createTimeStackedBarChart('timeStacked', appState.workEntries, appState.projects);
+    window.AdvancedCharts.createTrendPredictionChart('trendPrediction', appState.workEntries);
+  }
+
+  applyTranslations();
+}
+
+// =============================
+// Settings Page Rendering
+// =============================
+function renderSettingsPage() {
+  const container = document.getElementById('mainContent');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="page settings-page">
+      <section class="settings-section">
+        <h3 data-i18n="settings.language.title">Language</h3>
+        <p class="settings-description" data-i18n="settings.language.info">Your language preference is saved for future visits.</p>
+        <div class="lang-switcher">
+          <button type="button" class="lang-button" data-lang-btn="cs" onclick="switchLanguage('cs')">
+            <span data-i18n="settings.language.czech">Čeština</span>
+          </button>
+          <button type="button" class="lang-button" data-lang-btn="en" onclick="switchLanguage('en')">
+            <span data-i18n="settings.language.english">English</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <header class="settings-header">
+          <div>
+            <h3 data-i18n="settings.workers.title">Workers</h3>
+            <p class="settings-description" data-i18n="settings.workers.subtitle">Maintain crew details, color coding and hourly rates.</p>
+          </div>
+          <button class="btn btn-secondary" onclick="showAddWorkerModal()" data-i18n="settings.workers.add">Add worker</button>
+        </header>
+        <div class="settings-grid">
+          ${appState.workers.length === 0
+            ? `<div class="empty-state" data-i18n="settings.workers.empty">No workers yet.</div>`
+            : appState.workers.map(worker => `
+                <article class="settings-card">
+                  <header class="settings-card-header">
+                    <div class="worker-color" style="background:${worker.color}"></div>
+                    <div>
+                      <h4 class="settings-card-title">${worker.name}</h4>
+                      <p class="settings-card-subtitle">${worker.workerCode}</p>
+                    </div>
+                  </header>
+                  <dl class="settings-card-body">
+                    <div>
+                      <dt data-i18n="settings.workers.hourlyRate">Hourly rate</dt>
+                      <dd>${formatCurrency(worker.hourlyRate || 0)}</dd>
+                    </div>
+                    <div>
+                      <dt data-i18n="settings.workers.created">Created</dt>
+                      <dd>${worker.createdAt ? new Date(worker.createdAt).toLocaleDateString('cs-CZ') : '—'}</dd>
+                    </div>
+                  </dl>
+                  <footer class="settings-card-actions">
+                    <button class="btn-small" onclick="editWorker('${worker.id}')" data-i18n="buttons.edit">Edit</button>
+                    <button class="btn-small btn-danger" onclick="deleteWorker('${worker.id}')" data-i18n="buttons.delete">Delete</button>
+                  </footer>
+                </article>
+              `).join('')}
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <header class="settings-header">
+          <div>
+            <h3 data-i18n="settings.projects.title">Projects</h3>
+            <p class="settings-description" data-i18n="settings.projects.subtitle">Track solar sites, locations and status.</p>
+          </div>
+          <button class="btn btn-secondary" onclick="showAddProjectModal()" data-i18n="settings.projects.add">Add project</button>
+        </header>
+        <div class="settings-grid">
+          ${appState.projects.length === 0
+            ? `<div class="empty-state" data-i18n="settings.projects.empty">No projects yet.</div>`
+            : appState.projects.map(project => `
+                <article class="settings-card">
+                  <header class="settings-card-header">
+                    <div>
+                      <h4 class="settings-card-title">${project.name}</h4>
+                      <p class="settings-card-subtitle">${project.location || translate('messages.noData', 'N/A')}</p>
+                    </div>
+                    <span class="project-status status-${project.status || 'active'}">${project.status || 'active'}</span>
+                  </header>
+                  <dl class="settings-card-body">
+                    <div>
+                      <dt data-i18n="settings.projects.schedule">Schedule</dt>
+                      <dd>
+                        ${project.startDate ? new Date(project.startDate).toLocaleDateString('cs-CZ') : '—'}
+                        ${project.endDate ? `→ ${new Date(project.endDate).toLocaleDateString('cs-CZ')}` : ''}
+                      </dd>
+                    </div>
+                  </dl>
+                  <footer class="settings-card-actions">
+                    <button class="btn-small" onclick="editProject('${project.id}')" data-i18n="buttons.edit">Edit</button>
+                    <button class="btn-small btn-danger" onclick="deleteProject('${project.id}')" data-i18n="buttons.delete">Delete</button>
+                  </footer>
+                </article>
+              `).join('')}
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3 data-i18n="settings.data.title">Data management</h3>
+        <p class="settings-description" data-i18n="settings.data.subtitle">Backup your data regularly and restore if needed.</p>
+        <div class="data-actions">
+          <button class="btn btn-secondary" onclick="exportData()" data-i18n="settings.data.exportJson">Export JSON</button>
+          <button class="btn btn-secondary" onclick="exportCSV()" data-i18n="settings.data.exportCsv">Export CSV</button>
+          <button class="btn btn-secondary" onclick="importData()" data-i18n="settings.data.import">Import data</button>
+        </div>
+        <div class="data-meta">
+          <div>
+            <span class="meta-label" data-i18n="settings.data.lastBackup">Last backup</span>
+            <span class="meta-value" id="lastBackupMeta">${renderLastBackupInfo()}</span>
+          </div>
+          <div>
+            <span class="meta-label" data-i18n="settings.data.entries">Entries</span>
+            <span class="meta-value">${appState.workEntries.length}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section admin-shortcut">
+        <h3 data-i18n="settings.admin.title">Admin dashboard</h3>
+        <p data-i18n="settings.admin.subtitle">Click the sun logo 5× to unlock advanced backup tooling.</p>
+        ${isAdminSessionActive()
+          ? `<button class="btn btn-danger" onclick="logoutAdmin()" data-i18n="settings.admin.logout">Logout admin</button>`
+          : `<button class="btn btn-secondary" onclick="openAdminLoginModal()" data-i18n="settings.admin.login">Unlock admin</button>`}
+      </section>
+    </div>
+  `;
+
+  applyTranslations();
+}
+
+function renderLastBackupInfo() {
+  try {
+    const metaRaw = localStorage.getItem('mst:autoBackup:index');
+    if (!metaRaw) return translate('messages.noData', 'N/A');
+    const meta = JSON.parse(metaRaw);
+    if (!meta.lastBackupAt) return translate('messages.noData', 'N/A');
+    return new Date(meta.lastBackupAt).toLocaleString('cs-CZ');
+  } catch (error) {
+    return translate('messages.noData', 'N/A');
+  }
+}
+
+// =============================
+// Admin Page Rendering
+// =============================
+function renderAdminPage() {
+  const container = document.getElementById('mainContent');
+  if (!container) return;
+
+  if (!isAdminSessionActive()) {
+    container.innerHTML = `
+      <div class="admin-locked">
+        <h3 data-i18n="admin.lockedTitle">Admin dashboard locked</h3>
+        <p data-i18n="admin.lockedDescription">Use the hidden gesture (tap the sun icon five times) to unlock advanced tools.</p>
+        <button class="btn btn-secondary" onclick="openAdminLoginModal()" data-i18n="admin.loginButton">Unlock</button>
+      </div>
+    `;
+    applyTranslations();
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="page admin-page">
+      <section class="page-section admin-header">
+        <div>
+          <h2 class="section-title" data-i18n="admin.title">Admin dashboard</h2>
+          <p class="section-subtitle" data-i18n="admin.subtitle">Manage backups, verify storage health and troubleshoot sync.</p>
+        </div>
+        <button class="btn btn-danger" onclick="logoutAdmin()" data-i18n="settings.admin.logout">Logout admin</button>
+      </section>
+      <section class="page-section" id="adminPanelContainer">
+        <div class="loading" data-i18n="admin.loading">Loading backup overview…</div>
+      </section>
+    </div>
+  `;
+  applyTranslations();
+
+  if (!window.AdminBackupPanel || typeof window.AdminBackupPanel.renderAdminBackupPanel !== 'function') {
+    document.getElementById('adminPanelContainer').innerHTML = `<div class="empty-state" data-i18n="admin.unavailable">Admin module not available.</div>`;
+    applyTranslations();
+    return;
+  }
+
+  window.AdminBackupPanel.renderAdminBackupPanel()
+    .then(html => {
+      const panelContainer = document.getElementById('adminPanelContainer');
+      if (panelContainer) {
+        panelContainer.innerHTML = html;
+        applyTranslations();
+      }
+    })
+    .catch(error => {
+      console.error('[Admin] Failed to render backup panel:', error);
+      const panelContainer = document.getElementById('adminPanelContainer');
+      if (panelContainer) {
+        panelContainer.innerHTML = `<div class="empty-state" data-i18n="admin.loadFailed">Unable to load admin tools.</div>`;
+        applyTranslations();
+      }
+    });
+}
+
+// =============================
+// Rendering Orchestrator
+// =============================
+function render() {
+  updateNavigationState();
+  updatePageTitle();
+
+  switch (currentPage) {
+    case 'plan':
+      renderPlanPage();
+      break;
+    case 'records':
+      renderRecordsPage();
+      break;
+    case 'stats':
+      renderStatsPage();
+      break;
+    case 'analytics':
+      renderAnalyticsPage();
+      break;
+    case 'settings':
+      renderSettingsPage();
+      break;
+    case 'admin':
+      renderAdminPage();
+      break;
+    default:
+      currentPage = 'plan';
+      renderPlanPage();
+  }
+}
+
+// =============================
+// Language Switching
+// =============================
+async function switchLanguage(lang) {
+  if (!window.i18n || typeof window.i18n.setLanguage !== 'function') {
+    return;
+  }
+
+  try {
+    await window.i18n.setLanguage(lang);
+    render();
+    window.Toast?.success(
+      window.i18n.t('messages.languageChanged') || 'Language changed successfully',
+      window.i18n.t('messages.successTitle') || 'Success'
+    );
+  } catch (error) {
+    console.error('[i18n] Failed to switch language:', error);
+    window.Toast?.error(
+      window.i18n.t('messages.languageChangeFailed') || 'Failed to change language',
+      window.i18n.t('messages.errorTitle') || 'Error'
+    );
+  }
+}
+
+// =============================
+// Initialization
+// =============================
+async function init() {
+  try {
+    showLoading(translate('messages.loading', 'Loading…'));
+
+    if (window.IndexedDBService && typeof window.IndexedDBService.initDB === 'function') {
+      await window.IndexedDBService.initDB();
+      if (typeof window.IndexedDBService.initMeta === 'function') {
+        await window.IndexedDBService.initMeta();
+      }
+    }
+
+    if (window.i18n && typeof window.i18n.initLanguage === 'function') {
+      await window.i18n.initLanguage();
+    }
+
+    await loadState();
+    restoreAdminSession();
+    setupNavigation();
+    setupSecretAccess();
+
+    window.addEventListener('languageChanged', () => render());
+
+    render();
+  } catch (error) {
+    console.error('[App] Initialization failed:', error);
+    window.Toast?.error(
+      translate('messages.initFailed', 'Application failed to initialise.'),
+      translate('messages.errorTitle', 'Error')
+    );
+  } finally {
+    hideLoading();
+  }
+}
+
+// =============================
+// Global Exports
+// =============================
+window.appState = appState;
+window.render = render;
+window.loadState = loadState;
+window.switchLanguage = switchLanguage;
+window.submitAdminLogin = submitAdminLogin;
+window.logoutAdmin = logoutAdmin;
+window.navigateTo = navigateTo;
+
+// =============================
+// Start Application
+// =============================
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
 }
